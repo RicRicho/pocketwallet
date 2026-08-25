@@ -70,6 +70,29 @@ Maintain a local authority/activity log: proposer, grant used, constraints evalu
 ## UX design system
 Mobile-first; iPhone reference. Apple Wallet/good banking app, not crypto exchange. One primary decision per screen. Large money values. Plain English. AUD primary and BTC secondary by default. Progressive disclosure. No trading jargon. Accessible touch targets/contrast/labels. Technical details available but not dominant.
 
+## Proportionate security and the A$300 product limit
+PocketWallet is a fast, easy web spending wallet designed for holdings of up to
+approximately **A$300**, not a hardware wallet or a vault for life-changing
+amounts. Security must be appropriate to that bounded exposure and must not
+dominate the experience.
+
+Use strong, conventional web security of the kind people already trust for
+payments and credit-card details, while keeping it largely invisible in normal
+use. Do not force hardware-wallet-style ceremonies, repeated recovery warnings,
+technical education, mandatory paper backups or tests of recovery words on
+ordinary users.
+
+The default experience should create the wallet quickly, guide the user to save
+the recovery key in Apple Passwords, protect local wallet data, and show one
+short, calm warning only when a necessary backup or confirmation is missing.
+Advanced backup, export and technical information remain available but optional.
+
+The A$300 limit is a product and UX risk boundary. Implement it without turning
+PocketWallet into a permission service: no account, KYC, allowlist, custody or
+server approval may be required for the user to control their Bitcoin. Security
+controls should reduce realistic risk without creating disproportionate anxiety
+or friction.
+
 ## Full user experience
 
 ### First launch

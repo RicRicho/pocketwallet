@@ -29,6 +29,23 @@ keypad and paged progress dots.
 If the user loses both their passcode and their recovery phrase, no one —
 including us — can recover the wallet. That is the point.
 
+## Proportionate security
+
+PocketWallet is a fast web spending wallet intended for balances of up to
+approximately **A$300**. Its security should feel like the security behind a
+good payment website: strong and conventional, but mostly invisible.
+
+This is not a hardware-wallet experience. Ordinary users should not be forced
+through paper-backup ceremonies, recovery-word quizzes, repeated warnings or
+technical explanations. PocketWallet should create the wallet quickly, help the
+user save the recovery key in Apple Passwords, protect the local wallet, and
+give one clear, gentle warning only when a necessary step has not been completed.
+Advanced backup and export options remain available for people who want them.
+
+The A$300 product limit must not become custody or permission. Users still
+control their Bitcoin without a PocketWallet account, KYC, allowlist or server
+approval.
+
 ## The setup flow (this first release)
 
 1. **Welcome** — create a new wallet, or restore an existing one.
