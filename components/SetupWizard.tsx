@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import {
   createWallet,
+  forgetWallet,
   isValidMnemonic,
   walletFromMnemonic,
   saveEncrypted,
@@ -10,6 +11,7 @@ import {
   type BitcoinWallet,
 } from "@/lib/wallet";
 import { Card, GhostButton, Logo, PrimaryButton, ProgressDots } from "@/components/ui";
+import { registerPasskeyUnlock } from "@/lib/passkey";
 
 type Step =
   | "welcome"
@@ -36,6 +38,7 @@ export default function SetupWizard() {
   const [passcode1, setPasscode1] = useState("");
   const [passError, setPassError] = useState("");
   const [encryptPct, setEncryptPct] = useState(0);
+  const [passkeyReady, setPasskeyReady] = useState(false);
 
   const stepIndex = flow === "create"
     ? ["welcome", "backup", "passcode", "done"].indexOf(step === "passcode-confirm" || step === "encrypting" ? "passcode" : step)
@@ -61,24 +64,51 @@ export default function SetupWizard() {
       return;
     }
     try {
-      setWallet(walletFromMnemonic(importPhrase));
-      setStep("passcode");
+      const restored = walletFromMnemonic(importPhrase);
+      setWallet(restored);
+      void protectWithPasskey(restored);
     } catch {
       setImportError("Could not restore a wallet from that phrase.");
     }
   }
 
-  async function finish(code: string) {
-    if (!wallet) return;
+  async function finish(code: string, targetWallet = wallet) {
+    if (!targetWallet) return;
     setStep("encrypting");
     setEncryptPct(0);
     try {
-      await saveEncrypted(wallet, code, "Main wallet", (p) =>
+      await saveEncrypted(targetWallet, code, "Main wallet", (p) =>
         setEncryptPct(Math.round(p * 100)),
       );
+      setPasskeyReady(await registerPasskeyUnlock(code));
       setStep("done");
     } catch {
       setPassError("Something went wrong securing your wallet. Please try again.");
+      setStep("passcode");
+    }
+  }
+
+  async function protectWithPasskey(targetWallet = wallet) {
+    if (!targetWallet) return;
+    const secretBytes = crypto.getRandomValues(new Uint8Array(32));
+    const secret = Array.from(secretBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    setStep("encrypting");
+    try {
+      await saveEncrypted(targetWallet, secret, "Main wallet", (p) =>
+        setEncryptPct(Math.round(p * 100)),
+      );
+      const ready = await registerPasskeyUnlock(secret);
+      if (!ready) {
+        forgetWallet();
+        setPassError("Passkeys aren't available in this browser. Create a PIN instead.");
+        setStep("passcode");
+        return;
+      }
+      setPasskeyReady(true);
+      setStep("done");
+    } catch {
+      forgetWallet();
+      setPassError("Passkey setup didn't finish. Create a PIN instead.");
       setStep("passcode");
     }
   }
@@ -117,7 +147,7 @@ export default function SetupWizard() {
           <PasswordBackup
             phrase={wallet?.mnemonic || ""}
             onBack={() => setStep("welcome")}
-            onNext={() => setStep("passcode")}
+            onNext={() => void protectWithPasskey()}
           />
         )}
 
@@ -149,7 +179,7 @@ export default function SetupWizard() {
 
         {step === "encrypting" && <Encrypting pct={encryptPct} />}
 
-        {step === "done" && wallet && <Done address={wallet.address} />}
+        {step === "done" && wallet && <Done address={wallet.address} passkeyReady={passkeyReady} />}
       </Card>
 
       <p className="mt-8 max-w-[440px] text-center text-[13px] leading-relaxed text-haze">
@@ -375,13 +405,13 @@ function Encrypting({ pct }: { pct: number }) {
       </div>
       <h2 className="text-[22px] font-semibold text-ink">Securing your wallet</h2>
       <p className="mt-2 text-[15px] text-haze">
-        Encrypting your keys with your passcode… {pct}%
+        Protecting your keys on this device… {pct}%
       </p>
     </div>
   );
 }
 
-function Done({ address }: { address: string }) {
+function Done({ address, passkeyReady }: { address: string; passkeyReady: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="animate-fade-up text-center">
@@ -398,6 +428,11 @@ function Done({ address }: { address: string }) {
       </div>
       <h2 className="text-[28px] font-bold tracking-tight text-ink">You&apos;re all set</h2>
       <p className="mt-2 text-[16px] text-haze">Your Bitcoin wallet is ready to use.</p>
+      <p className="mt-2 text-[14px] text-haze">
+        {passkeyReady
+          ? "Face ID, Touch ID or your device unlock will open it next time."
+          : "Your PIN remains available because this browser did not create a compatible passkey."}
+      </p>
 
       <button
         onClick={() => {

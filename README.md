@@ -51,8 +51,10 @@ approval.
 1. **Welcome** — create a new wallet, or restore an existing one.
 2. **Recovery backup** — copy the generated key into Apple Passwords and confirm
    the entry is visible. The phrase stays hidden unless the user chooses to view it.
-3. **Passcode** — set + confirm a 6-digit passcode (iOS keypad).
-4. **Done** — wallet encrypted locally; land on the wallet screen.
+3. **Passkey** — protect the encrypted local wallet with Face ID, Touch ID or
+   the device unlock. A six-digit PIN is offered only when compatible passkeys
+   are unavailable.
+4. **Done** — land on the AUD-first wallet screen.
 
 Restore path: paste a 12/24-word phrase → validate → set passcode → done.
 Returning users hit an **unlock** screen.
@@ -60,8 +62,11 @@ Returning users hit an **unlock** screen.
 ## Tech
 
 - **Next.js 15** (App Router) · **TypeScript** · **Tailwind CSS**
-- **bitcoinjs-lib**, **@scure/bip32**, and **bip39** for browser-compatible
+- **bitcoinjs-lib**, **@scure/bip32**, **@noble/curves**, and **bip39** for browser-compatible
   Bitcoin-native derivation and address handling
+- **WebAuthn PRF** for passkey-first local unlock
+- **Blockstream Esplora + mempool.space** as replaceable Bitcoin data/broadcast
+  providers; **CoinGecko + Kraken** as replaceable AUD-price providers
 - Static export → deploys anywhere (target: **Cloudflare Pages**)
 
 ## Run locally
@@ -80,9 +85,10 @@ in [`DEPLOY.md`](DEPLOY.md).
 
 ## Roadmap (next builds)
 
-- [ ] Replaceable Bitcoin provider adapters for balances/UTXOs/history
-- [ ] Send & receive (QR, address book)
-- [ ] Biometric/WebAuthn unlock in place of the passcode
+- [x] Replaceable Bitcoin providers for balance, UTXOs, fees and broadcast
+- [x] AUD-primary balance, native-SegWit Receive QR and locally signed Send
+- [x] Passkey-first WebAuthn unlock with PIN fallback
+- [ ] Transaction history and address discovery beyond the first BIP-84 address
 - [ ] Drop in Ric's exact Apple design spec (components already map to it)
 
 ## Project layout

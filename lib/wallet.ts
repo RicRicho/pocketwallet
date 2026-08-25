@@ -103,7 +103,7 @@ export async function saveEncrypted(
   label: string,
   onProgress?: (p: number) => void,
 ): Promise<WalletMeta> {
-  if (!/^\d{6}$/.test(passcode)) throw new Error("Passcode must be six digits");
+  if (passcode.length < 6) throw new Error("Wallet unlock secret is too short");
   if (!isBitcoinAddress(wallet.address, wallet.network)) throw new Error("Invalid Bitcoin wallet");
   onProgress?.(0);
   const payload: SecretPayload = {

@@ -3,8 +3,12 @@
 ## Mission
 Finish PocketWallet as a genuinely usable, permissionless, non-custodial Bitcoin spending wallet. **It should feel like sending money, not operating Bitcoin.**
 
-## Current-state correction
-The existing prototype proves local create/import, encrypted local storage and passcode unlock, but `lib/wallet.ts` currently uses `ethers` and creates an EVM-style wallet/address. Codex must migrate the core to Bitcoin-native primitives; do not bolt Bitcoin send/receive onto the EVM address model. Detect legacy prototype data and never silently reinterpret it as a Bitcoin wallet.
+## Current implementation
+PocketWallet now uses a BIP-39/BIP-84 native-SegWit Bitcoin wallet, encrypted
+local storage and passkey-first WebAuthn unlock with PIN fallback. The home
+balance is AUD-primary; Receive provides a Bitcoin QR/address; Send validates,
+reviews, signs locally and broadcasts through replaceable Bitcoin providers.
+Legacy EVM prototype data is detected and is never reinterpreted as Bitcoin.
 
 ## Non-negotiable architecture
 1. Permissionless: create, restore, receive, hold and send BTC without PocketWallet approval, account, KYC, allowlist or proprietary server permission.
