@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   createWallet,
   isValidMnemonic,
@@ -14,7 +14,6 @@ import { Card, GhostButton, Logo, PrimaryButton, ProgressDots } from "@/componen
 type Step =
   | "welcome"
   | "backup"
-  | "confirm"
   | "import"
   | "passcode"
   | "passcode-confirm"
@@ -28,11 +27,6 @@ export default function SetupWizard() {
   const [wallet, setWallet] = useState<BitcoinWallet | null>(null);
   const [flow, setFlow] = useState<"create" | "import">("create");
 
-  // create-flow state
-  const [revealed, setRevealed] = useState(false);
-  const [confirmIdx] = useState(() => pickThree());
-  const [confirmPicks, setConfirmPicks] = useState<Record<number, string>>({});
-
   // import-flow state
   const [importPhrase, setImportPhrase] = useState("");
   const [importError, setImportError] = useState("");
@@ -43,20 +37,14 @@ export default function SetupWizard() {
   const [passError, setPassError] = useState("");
   const [encryptPct, setEncryptPct] = useState(0);
 
-  const words = useMemo(
-    () => (wallet?.mnemonic ? wallet.mnemonic.split(" ") : []),
-    [wallet],
-  );
-
   const stepIndex = flow === "create"
-    ? ["welcome", "backup", "confirm", "passcode", "done"].indexOf(step === "passcode-confirm" || step === "encrypting" ? "passcode" : step)
+    ? ["welcome", "backup", "passcode", "done"].indexOf(step === "passcode-confirm" || step === "encrypting" ? "passcode" : step)
     : ["welcome", "import", "passcode", "done"].indexOf(step === "passcode-confirm" || step === "encrypting" ? "passcode" : step);
-  const stepTotal = flow === "create" ? 5 : 4;
+  const stepTotal = 4;
 
   function startCreate() {
     setFlow("create");
     setWallet(createWallet());
-    setRevealed(false);
     setStep("backup");
   }
 
@@ -79,11 +67,6 @@ export default function SetupWizard() {
       setImportError("Could not restore a wallet from that phrase.");
     }
   }
-
-  // Confirm-backup: the user must re-pick the 3 hidden words in order.
-  const confirmSolved =
-    confirmIdx.every((idx) => confirmPicks[idx] === words[idx]) &&
-    Object.keys(confirmPicks).length === confirmIdx.length;
 
   async function finish(code: string) {
     if (!wallet) return;
@@ -131,26 +114,9 @@ export default function SetupWizard() {
         {step === "welcome" && <Welcome onCreate={startCreate} onImport={startImport} />}
 
         {step === "backup" && (
-          <Backup
-            words={words}
-            revealed={revealed}
-            setRevealed={setRevealed}
+          <PasswordBackup
+            phrase={wallet?.mnemonic || ""}
             onBack={() => setStep("welcome")}
-            onNext={() => {
-              setConfirmPicks({});
-              setStep("confirm");
-            }}
-          />
-        )}
-
-        {step === "confirm" && (
-          <ConfirmBackup
-            words={words}
-            confirmIdx={confirmIdx}
-            picks={confirmPicks}
-            setPicks={setConfirmPicks}
-            solved={confirmSolved}
-            onBack={() => setStep("backup")}
             onNext={() => setStep("passcode")}
           />
         )}
@@ -218,151 +184,75 @@ function Welcome({ onCreate, onImport }: { onCreate: () => void; onImport: () =>
   );
 }
 
-function Backup({
-  words,
-  revealed,
-  setRevealed,
+function PasswordBackup({
+  phrase,
   onBack,
   onNext,
 }: {
-  words: string[];
-  revealed: boolean;
-  setRevealed: (v: boolean) => void;
+  phrase: string;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const [written, setWritten] = useState(false);
-  return (
-    <div className="animate-fade-up">
-      <StepHeader
-        title="Your recovery phrase"
-        subtitle="Write these 12 words down in order and keep them somewhere safe. This is the only way to restore your wallet."
-      />
-      <div className="relative mt-6">
-        <div className="grid grid-cols-2 gap-2.5">
-          {words.map((w, i) => (
-            <div key={i} className="word-chip flex items-center gap-2 rounded-xl px-3 py-2.5">
-              <span className="w-5 text-right text-[13px] tabular-nums text-haze">{i + 1}</span>
-              <span className="text-[15px] font-medium text-ink">{w}</span>
-            </div>
-          ))}
-        </div>
-        {!revealed && (
-          <button
-            onClick={() => setRevealed(true)}
-            className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-white/60 backdrop-blur-md"
-          >
-            <span className="text-[15px] font-semibold text-ink">Tap to reveal</span>
-            <span className="mt-1 text-[13px] text-haze">Make sure no one is watching</span>
-          </button>
-        )}
-      </div>
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
-      <label className="mt-5 flex cursor-pointer items-start gap-3">
-        <input
-          type="checkbox"
-          checked={written}
-          onChange={(e) => setWritten(e.target.checked)}
-          disabled={!revealed}
-          className="mt-0.5 h-5 w-5 accent-pocket-blue"
-        />
-        <span className="text-[14px] leading-snug text-ink">
-          I&apos;ve written down my recovery phrase and understand PocketWallet can&apos;t recover
-          it for me.
-        </span>
-      </label>
-
-      <div className="mt-6 space-y-2">
-        <PrimaryButton disabled={!revealed || !written} onClick={onNext}>
-          Continue
-        </PrimaryButton>
-        <GhostButton onClick={onBack}>Back</GhostButton>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmBackup({
-  words,
-  confirmIdx,
-  picks,
-  setPicks,
-  solved,
-  onBack,
-  onNext,
-}: {
-  words: string[];
-  confirmIdx: number[];
-  picks: Record<number, string>;
-  setPicks: (p: Record<number, string>) => void;
-  solved: boolean;
-  onBack: () => void;
-  onNext: () => void;
-}) {
-  // Build a shuffled options pool: the correct words + a few decoys.
-  const options = useMemo(() => buildOptions(words, confirmIdx), [words, confirmIdx]);
-  const activeIdx = confirmIdx.find((idx) => !picks[idx]);
-
-  function choose(word: string) {
-    if (activeIdx === undefined) return;
-    setPicks({ ...picks, [activeIdx]: word });
+  async function copyPhrase() {
+    await navigator.clipboard.writeText(phrase);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
   }
 
   return (
     <div className="animate-fade-up">
       <StepHeader
-        title="Confirm your phrase"
-        subtitle="Tap the correct word for each position to prove you saved it."
+        title="Save your recovery key"
+        subtitle="For a quick, secure backup, save it as a new entry in Apple Passwords."
       />
-      <div className="mt-6 space-y-2.5">
-        {confirmIdx.map((idx) => (
-          <div
-            key={idx}
-            className={`flex items-center justify-between rounded-xl border px-4 py-3 transition-colors ${
-              activeIdx === idx
-                ? "border-pocket-blue bg-pocket-blue/5"
-                : "border-black/8 bg-white/70"
-            }`}
-          >
-            <span className="text-[14px] text-haze">Word #{idx + 1}</span>
-            <span
-              className={`text-[15px] font-semibold ${
-                picks[idx]
-                  ? picks[idx] === words[idx]
-                    ? "text-pocket-mint"
-                    : "text-red-500"
-                  : "text-haze/50"
-              }`}
-            >
-              {picks[idx] || "—"}
-            </span>
-          </div>
-        ))}
+
+      <div className="mt-6 rounded-2xl border border-black/8 bg-white/70 p-4">
+        <ol className="space-y-3 text-[15px] leading-relaxed text-ink">
+          <li><span className="mr-2 font-semibold text-pocket-blue">1</span>Copy the recovery key below.</li>
+          <li><span className="mr-2 font-semibold text-pocket-blue">2</span>Open Apple Passwords and tap <strong>+</strong>.</li>
+          <li><span className="mr-2 font-semibold text-pocket-blue">3</span>Use <strong>pocketwallet.io</strong> as the website and paste the key into the password field.</li>
+          <li><span className="mr-2 font-semibold text-pocket-blue">4</span>Save it, then return here.</li>
+        </ol>
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        {options.map((w) => (
-          <button
-            key={w}
-            onClick={() => choose(w)}
-            className="word-chip rounded-full px-4 py-2 text-[14px] font-medium text-ink transition active:scale-95"
-          >
-            {w}
-          </button>
-        ))}
+      <div className="mt-4 rounded-2xl bg-black/[0.035] p-4">
+        <div className={revealed ? "break-words text-[14px] leading-relaxed text-ink" : "select-none text-center text-[14px] tracking-[0.18em] text-haze"}>
+          {revealed ? phrase : "•••• •••• •••• ••••"}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <GhostButton onClick={() => setRevealed(!revealed)}>
+            {revealed ? "Hide" : "Show"}
+          </GhostButton>
+          <GhostButton onClick={copyPhrase}>{copied ? "Copied" : "Copy key"}</GhostButton>
+        </div>
       </div>
+
+      <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-50/70 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
+        <strong>Before continuing:</strong> check that the PocketWallet entry appears in Passwords.
+        If this key is not saved, losing this device means losing access to the wallet.
+        PocketWallet cannot recover it for you.
+      </div>
+
+      <label className="mt-5 flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+          className="mt-0.5 h-5 w-5 accent-pocket-blue"
+        />
+        <span className="text-[14px] leading-snug text-ink">
+          I can see my PocketWallet recovery key in Passwords.
+        </span>
+      </label>
 
       <div className="mt-6 space-y-2">
-        <PrimaryButton disabled={!solved} onClick={onNext}>
+        <PrimaryButton disabled={!confirmed} onClick={onNext}>
           Continue
         </PrimaryButton>
-        <GhostButton
-          onClick={() => {
-            setPicks({});
-          }}
-        >
-          Reset
-        </GhostButton>
         <GhostButton onClick={onBack}>Back</GhostButton>
       </div>
     </div>
@@ -548,37 +438,4 @@ function StepHeader({
       <p className="mt-2 text-[15px] leading-relaxed text-haze">{subtitle}</p>
     </div>
   );
-}
-
-/* ---------- helpers ---------- */
-
-// Deterministic-free small helpers. We avoid Math.random bias concerns by using
-// crypto for the index picks so the confirm challenge is unpredictable.
-function pickThree(): number[] {
-  const set = new Set<number>();
-  const buf = new Uint32Array(12);
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    crypto.getRandomValues(buf);
-  }
-  let i = 0;
-  while (set.size < 3) {
-    const n = (buf[i % 12] ?? i * 2654435761) % 12;
-    set.add(n);
-    i++;
-  }
-  return Array.from(set).sort((a, b) => a - b);
-}
-
-function buildOptions(words: string[], confirmIdx: number[]): string[] {
-  const correct = confirmIdx.map((i) => words[i]).filter(Boolean);
-  const decoys = words.filter((w) => !correct.includes(w)).slice(0, 3);
-  const pool = [...correct, ...decoys];
-  // shuffle with crypto
-  for (let i = pool.length - 1; i > 0; i--) {
-    const r = new Uint32Array(1);
-    if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(r);
-    const j = (r[0] ?? i) % (i + 1);
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool;
 }

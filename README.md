@@ -32,10 +32,10 @@ including us — can recover the wallet. That is the point.
 ## The setup flow (this first release)
 
 1. **Welcome** — create a new wallet, or restore an existing one.
-2. **Recovery phrase** — reveal-to-view 12 words, confirm you wrote them down.
-3. **Confirm phrase** — re-pick 3 words to prove the backup.
-4. **Passcode** — set + confirm a 6-digit passcode (iOS keypad).
-5. **Done** — wallet encrypted locally; land on the wallet screen.
+2. **Recovery backup** — copy the generated key into Apple Passwords and confirm
+   the entry is visible. The phrase stays hidden unless the user chooses to view it.
+3. **Passcode** — set + confirm a 6-digit passcode (iOS keypad).
+4. **Done** — wallet encrypted locally; land on the wallet screen.
 
 Restore path: paste a 12/24-word phrase → validate → set passcode → done.
 Returning users hit an **unlock** screen.
