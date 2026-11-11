@@ -1,21 +1,28 @@
 /**
  * PocketWallet testnet sponsor service — Cloudflare Worker. NOT DEPLOYED.
  *
- * POST /v1/onboard   {account}  -> sponsor-signed onboarding XDR (user signs + submits)
- * POST /v1/fee-bump  {xdr}      -> validates, wraps in sponsor fee-bump, submits; returns {hash}
- * GET  /v1/health               -> {network, sponsor, asset}
+ * POST /v1/onboard          {account} -> channel+sponsor-signed onboarding XDR (user signs + submits)
+ * POST /v1/onboard/release  {account} -> frees the sign-up channel once the account is on the ledger
+ * POST /v1/fee-bump         {xdr}     -> validates, wraps in sponsor fee-bump, submits; returns {hash}
+ * GET  /v1/health                     -> {network, sponsor, asset}
  *
+ * Global state (rate limits, daily cap, channel leases, sponsor-sequence
+ * serialization) lives in one Durable Object, SponsorCoordinator("global").
  * The sponsor never receives a user's phrase or secret key. Testnet only.
  */
-import { Account } from "@stellar/stellar-base";
-import {
-  PolicyError, RateLimiter, buildFeeBump, buildOnboarding, checkInnerForFeeBump, loadConfig,
-  requireAccountId, type Config, type Env,
-} from "./policy";
+import { horizonSubmit } from "./horizon";
+import { PolicyError, buildFeeBump, checkInnerForFeeBump, loadConfig, requireAccountId, type Config, type Env } from "./policy";
+import type { CoordinatorRequest } from "./coordinator";
+export { SponsorCoordinator } from "./coordinator";
 
-const limiter = new RateLimiter();
+export interface DONamespace {
+  idFromName(name: string): unknown;
+  get(id: unknown): { fetch(input: string, init?: RequestInit): Promise<Response> };
+}
+export interface WorkerEnv extends Env { COORDINATOR?: DONamespace }
+
 const MAX_BODY = 16_384;
-const HOUR = 3_600_000, DAY = 86_400_000, MINUTE = 60_000;
+const MINUTE = 60_000;
 
 function cors(cfg: Config | null, origin: string | null): Record<string, string> {
   if (!cfg || !origin || !cfg.allowedOrigins.includes(origin)) return {};
@@ -29,10 +36,7 @@ function cors(cfg: Config | null, origin: string | null): Record<string, string>
 }
 
 function json(body: unknown, status: number, headers: Record<string, string>): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers } });
 }
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {
@@ -42,70 +46,53 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
   throw new PolicyError(400, "bad_json", "JSON body required");
 }
 
-async function horizonAccount(cfg: Config, id: string): Promise<{ sequence: string } | null> {
-  const r = await fetch(`${cfg.horizonUrl}/accounts/${id}`);
-  if (r.status === 404) return null;
-  if (!r.ok) throw new PolicyError(502, "horizon", "Stellar testnet unavailable");
-  return (await r.json()) as { sequence: string };
-}
-
-async function horizonSubmit(cfg: Config, xdr: string): Promise<{ hash: string }> {
-  const r = await fetch(`${cfg.horizonUrl}/transactions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `tx=${encodeURIComponent(xdr)}`,
-  });
-  const body = (await r.json()) as { hash?: string; extras?: { result_codes?: unknown } };
-  if (!r.ok || !body.hash) {
-    const err = new PolicyError(400, "tx_failed", "Stellar rejected the transaction");
-    (err as PolicyError & { detail?: unknown }).detail = body.extras?.result_codes;
+async function coordinator<T>(env: WorkerEnv, body: CoordinatorRequest): Promise<T> {
+  if (!env.COORDINATOR) throw new PolicyError(503, "no_coordinator", "Global rate limiting isn't configured");
+  const stub = env.COORDINATOR.get(env.COORDINATOR.idFromName("global"));
+  const res = await stub.fetch("https://coordinator/", { method: "POST", body: JSON.stringify(body) });
+  const data = (await res.json()) as T & { error?: string; message?: string; detail?: unknown };
+  if (!res.ok) {
+    const err = new PolicyError(res.status, data.error || "internal", data.message || "Something went wrong") as PolicyError & { detail?: unknown };
+    err.detail = data.detail;
     throw err;
   }
-  return { hash: body.hash };
+  return data;
 }
 
-export async function handle(req: Request, env: Env, now = Date.now()): Promise<Response> {
+export async function handle(req: Request, env: WorkerEnv, now = Date.now()): Promise<Response> {
   const origin = req.headers.get("Origin");
   let cfg: Config | null = null;
   try {
     cfg = loadConfig(env);
     const headers = cors(cfg, origin);
-    if (origin && cfg.allowedOrigins.length && !cfg.allowedOrigins.includes(origin)) {
-      throw new PolicyError(403, "origin", "Origin not allowed");
-    }
+    if (origin && cfg.allowedOrigins.length && !cfg.allowedOrigins.includes(origin)) throw new PolicyError(403, "origin", "Origin not allowed");
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
     const url = new URL(req.url);
     const ip = req.headers.get("CF-Connecting-IP") || "local";
-    const nowS = Math.floor(now / 1000);
 
     if (req.method === "GET" && url.pathname === "/v1/health") {
-      return json({ network: "testnet", sponsor: cfg.sponsor.publicKey(), asset: `${cfg.asset.getCode()}:${cfg.asset.getIssuer()}` }, 200, headers);
+      return json({ network: "testnet", sponsor: cfg.sponsor.publicKey(), asset: `${cfg.asset.getCode()}:${cfg.asset.getIssuer()}`, channels: cfg.channels }, 200, headers);
     }
     if (req.method === "POST" && url.pathname === "/v1/onboard") {
       const account = requireAccountId((await readJson(req)).account);
-      if (!limiter.hit(`onboard-ip:${ip}`, cfg.limits.onboardPerIpHour, HOUR, now)) throw new PolicyError(429, "rate_limited", "Too many new accounts from here. Try later.");
-      if (!limiter.hit(`onboard-acct:${account}`, 3, HOUR, now)) throw new PolicyError(429, "rate_limited", "Too many attempts for this account");
-      if (await horizonAccount(cfg, account)) throw new PolicyError(409, "exists", "That account already exists");
-      if (!limiter.hit("onboard-global", cfg.limits.onboardPerDay, DAY, now)) throw new PolicyError(429, "daily_cap", "Daily sponsorship cap reached");
-      const sp = await horizonAccount(cfg, cfg.sponsor.publicKey());
-      if (!sp) throw new PolicyError(503, "sponsor_unfunded", "Sponsor account isn't funded");
-      const tx = buildOnboarding(cfg, new Account(cfg.sponsor.publicKey(), sp.sequence), account, nowS);
-      return json({ xdr: tx.toXDR(), networkPassphrase: cfg.passphrase }, 200, headers);
+      return json(await coordinator(env, { op: "onboard", account, ip, now }), 200, headers);
+    }
+    if (req.method === "POST" && url.pathname === "/v1/onboard/release") {
+      const account = requireAccountId((await readJson(req)).account);
+      return json(await coordinator(env, { op: "release", account, now }), 200, headers);
     }
     if (req.method === "POST" && url.pathname === "/v1/fee-bump") {
-      if (!limiter.hit(`bump-ip:${ip}`, cfg.limits.feeBumpPerIpMinute, MINUTE, now)) throw new PolicyError(429, "rate_limited", "Too many payments from here. Slow down.");
-      const inner = checkInnerForFeeBump(cfg, (await readJson(req)).xdr, nowS);
-      const res = await horizonSubmit(cfg, buildFeeBump(cfg, inner).toXDR());
-      return json(res, 200, headers);
+      const { ok } = await coordinator<{ ok: boolean }>(env, { op: "hit", key: `bump-ip:${ip}`, limit: cfg.limits.feeBumpPerIpMinute, windowMs: MINUTE, now });
+      if (!ok) throw new PolicyError(429, "rate_limited", "Too many payments from here. Slow down.");
+      const inner = checkInnerForFeeBump(cfg, (await readJson(req)).xdr, Math.floor(now / 1000));
+      return json(await horizonSubmit(cfg, buildFeeBump(cfg, inner).toXDR()), 200, headers);
     }
     return json({ error: "not_found" }, 404, headers);
   } catch (e) {
     const headers = cors(cfg, origin);
-    if (e instanceof PolicyError) {
-      return json({ error: e.code, message: e.message, detail: (e as PolicyError & { detail?: unknown }).detail }, e.status, headers);
-    }
+    if (e instanceof PolicyError) return json({ error: e.code, message: e.message, detail: (e as PolicyError & { detail?: unknown }).detail }, e.status, headers);
     return json({ error: "internal", message: "Something went wrong" }, 500, headers);
   }
 }
 
-export default { fetch: (req: Request, env: Env) => handle(req, env) };
+export default { fetch: (req: Request, env: WorkerEnv) => handle(req, env) };

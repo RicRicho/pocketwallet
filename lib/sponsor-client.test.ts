@@ -6,10 +6,11 @@ import { resolveAsset } from "./stellar";
 const sponsor = Keypair.random().publicKey();
 const user = Keypair.random().publicKey();
 const asset = resolveAsset(undefined);
-const good = (extra?: ReturnType<typeof Operation.payment>, startingBalance = "0", line = new Asset(asset.code, asset.issuer)) => {
-  const b = new TransactionBuilder(new Account(sponsor, "1"), { fee: "100", networkPassphrase: Networks.TESTNET })
-    .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: user }))
-    .addOperation(Operation.createAccount({ destination: user, startingBalance }))
+const channel = Keypair.random().publicKey();
+const good = (extra?: ReturnType<typeof Operation.payment>, startingBalance = "0", line = new Asset(asset.code, asset.issuer), txSource = channel) => {
+  const b = new TransactionBuilder(new Account(txSource, "1"), { fee: "100", networkPassphrase: Networks.TESTNET })
+    .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: user, source: sponsor }))
+    .addOperation(Operation.createAccount({ destination: user, startingBalance, source: sponsor }))
     .addOperation(Operation.changeTrust({ asset: line, source: user }))
     .addOperation(Operation.endSponsoringFutureReserves({ source: user }));
   if (extra) b.addOperation(extra);
@@ -29,5 +30,6 @@ describe("sponsor client", () => {
     expect(() => verifyOnboardingTx(good(undefined, "1"), user, asset)).toThrow(/unexpected/);
     expect(() => verifyOnboardingTx(good(undefined, "0", new Asset("AUDD", Keypair.random().publicKey())), user, asset)).toThrow(/unexpected/);
     expect(() => verifyOnboardingTx(good(), Keypair.random().publicKey(), asset)).toThrow(/unexpected/);
+    expect(() => verifyOnboardingTx(good(undefined, "0", undefined, user), user, asset)).toThrow(/unexpected/); // user as tx source pays fees
   });
 });

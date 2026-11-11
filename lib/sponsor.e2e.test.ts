@@ -25,11 +25,24 @@ run("sponsor worker (local) + Stellar testnet", () => {
     expect(health.asset).toBe(`TAUD:${issuer.publicKey()}`);
     const taud = resolveAsset(health.asset);
 
+    // Concurrent sign-ups (CHANNELS=3 for this run): first wave creates the 3
+    // channel accounts (serialized through the Durable Object), all land.
     const [user, merchant, carol] = [fresh(), fresh(), fresh()];
-    for (const k of [user, merchant, carol]) await onboardWithSponsor(base, k, taud);
+    const waveA = await Promise.all([user, merchant, carol].map((k) => onboardWithSponsor(base, k, taud)));
+    expect(new Set(waveA).size).toBe(3);
     for (const k of [user, merchant, carol]) {
       expect(await loadStellarSnapshot(k.publicKey(), taud)).toMatchObject({ exists: true, xlm: "0.0000000", hasTrustline: true });
     }
+    // Second wave reuses the released channels concurrently (fresh sequence numbers).
+    const waveB = [fresh(), fresh(), fresh()];
+    await Promise.all(waveB.map((k) => onboardWithSponsor(base, k, taud)));
+    for (const k of waveB) expect((await loadStellarSnapshot(k.publicKey(), taud)).exists).toBe(true);
+    // Four parallel requests nobody submits: 3 channels leased, the 4th is told "busy".
+    const waveC = await Promise.all([fresh(), fresh(), fresh(), fresh()].map((k) =>
+      fetch(`${base}/v1/onboard`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account: k.publicKey() }) })));
+    const sources = await Promise.all(waveC.filter((r) => r.ok).map(async (r) => (TransactionBuilder.fromXDR((await r.json() as { xdr: string }).xdr, STELLAR_TESTNET.passphrase) as { source: string }).source));
+    expect(waveC.map((r) => r.status).sort()).toEqual([200, 200, 200, 503]);
+    expect(new Set(sources).size).toBe(3);
 
     const mint = new TransactionBuilder(await server.loadAccount(issuer.publicKey()), { fee: BASE_FEE, networkPassphrase: STELLAR_TESTNET.passphrase })
       .addOperation(Operation.payment({ destination: user.publicKey(), asset: new Asset("TAUD", issuer.publicKey()), amount: "30" }))
@@ -61,7 +74,7 @@ run("sponsor worker (local) + Stellar testnet", () => {
     await expect(submitViaSponsor(base, xlmPay.toXDR())).rejects.toThrow(/configured asset/);
     // Existing account can't be re-onboarded.
     await expect(onboardWithSponsor(base, user, taud)).rejects.toThrow(/already exists/);
-    // Per-IP onboarding limit (set to 4 for this run: 3 onboards + 1 refused attempt).
+    // Global per-IP onboarding limit (11 for this run: 3+3+4 sign-ups + 1 refused re-onboard).
     await expect(onboardWithSponsor(base, fresh(), taud)).rejects.toThrow(/Too many/);
 
     const sponsorAcct = await server.loadAccount(health.sponsor);

@@ -22,3 +22,15 @@ MAX_ONBOARD_PER_DAY = "200"
 MAX_FEEBUMP_PER_IP_PER_MINUTE = "20"
 FEE_PER_OP_STROOPS = "100"
 MAX_FEE_STROOPS = "20000"
+# Channel accounts (derived from the sponsor secret) remove sequence-number collisions.
+CHANNELS = "5"
+CHANNEL_STARTING_XLM = "3"
+# One global Durable Object holds rate limits, the daily cap, channel leases
+# and serializes sponsor-sequence submissions across all Worker instances.
+[[durable_objects.bindings]]
+name = "COORDINATOR"
+class_name = "SponsorCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SponsorCoordinator"]

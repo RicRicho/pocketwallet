@@ -6,6 +6,8 @@ import {
   Asset, FeeBumpTransaction, Keypair, Networks, Operation, StrKey, Transaction, TransactionBuilder,
   type Account,
 } from "@stellar/stellar-base";
+import { hmac } from "@noble/hashes/hmac";
+import { sha256 } from "@noble/hashes/sha256";
 
 export const TESTNET_HORIZON = "https://horizon-testnet.stellar.org";
 export const AUDD_MAINNET_ISSUER = "GDC7X2MXTYSAKUUGAIQ7J7RPEIM7GXSAIWFYWWH4GLNFECQVJJLB2EEU";
@@ -23,6 +25,8 @@ export interface Env {
   MAX_FEEBUMP_PER_IP_PER_MINUTE?: string;
   FEE_PER_OP_STROOPS?: string;
   MAX_FEE_STROOPS?: string;
+  CHANNELS?: string;
+  CHANNEL_STARTING_XLM?: string;
 }
 
 export interface Config {
@@ -34,6 +38,8 @@ export interface Config {
   limits: { onboardPerIpHour: number; onboardPerDay: number; feeBumpPerIpMinute: number };
   feePerOp: number;
   maxFee: number;
+  channels: number;
+  channelStartingXlm: string;
 }
 
 export class PolicyError extends Error {
@@ -70,6 +76,8 @@ export function loadConfig(env: Env): Config {
     },
     feePerOp,
     maxFee: int(env.MAX_FEE_STROOPS, 20_000, feePerOp * 2, 10_000_000),
+    channels: int(env.CHANNELS, 5, 1, 50),
+    channelStartingXlm: String(int(env.CHANNEL_STARTING_XLM, 3, 2, 100)),
   };
 }
 
@@ -78,17 +86,45 @@ export function requireAccountId(v: unknown): string {
   return v;
 }
 
-/** Sponsor-signed onboarding: account with 0 XLM + trustline to the configured asset, reserves paid by sponsor. */
-export function buildOnboarding(cfg: Config, sponsorAccount: Account, user: string, nowSeconds: number): Transaction {
-  if (user === cfg.sponsor.publicKey()) throw new PolicyError(400, "bad_account", "Can't onboard the sponsor");
-  const tx = new TransactionBuilder(sponsorAccount, {
+/**
+ * Channel accounts remove sponsor sequence-number collisions: each onboarding
+ * transaction uses a leased channel account as its source (and fee payer), so
+ * the sponsor's own sequence number is never consumed by user-held
+ * transactions. Channel keys are derived from the sponsor secret, so no extra
+ * secrets exist. Channels hold only a few test XLM for fees.
+ */
+export function deriveChannel(cfg: Config, index: number): Keypair {
+  if (!Number.isInteger(index) || index < 0 || index >= cfg.channels) throw new PolicyError(500, "bad_channel", "Invalid channel");
+  const seed = hmac(sha256, cfg.sponsor.rawSecretKey(), new TextEncoder().encode(`pocketwallet-sponsor-channel-${index}`));
+  return Keypair.fromRawEd25519Seed(Buffer.from(seed));
+}
+
+/** Channel- and sponsor-signed onboarding: account with 0 XLM + trustline, reserves paid by sponsor. */
+export function buildOnboarding(cfg: Config, channel: Keypair, channelAccount: Account, user: string, nowSeconds: number): Transaction {
+  const sponsor = cfg.sponsor.publicKey();
+  if (user === sponsor || user === channel.publicKey()) throw new PolicyError(400, "bad_account", "Can't onboard a service account");
+  const tx = new TransactionBuilder(channelAccount, {
     fee: String(cfg.feePerOp), networkPassphrase: cfg.passphrase,
-    timebounds: { minTime: 0, maxTime: nowSeconds + 120 },
+    timebounds: { minTime: 0, maxTime: nowSeconds + ONBOARD_TTL_SECONDS },
   })
-    .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: user }))
-    .addOperation(Operation.createAccount({ destination: user, startingBalance: "0" }))
+    .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: user, source: sponsor }))
+    .addOperation(Operation.createAccount({ destination: user, startingBalance: "0", source: sponsor }))
     .addOperation(Operation.changeTrust({ asset: cfg.asset, source: user }))
     .addOperation(Operation.endSponsoringFutureReserves({ source: user }))
+    .build();
+  tx.sign(channel, cfg.sponsor);
+  return tx;
+}
+
+export const ONBOARD_TTL_SECONDS = 120;
+
+/** Sponsor-sourced transaction that creates a channel account (server-submitted). */
+export function buildCreateChannel(cfg: Config, sponsorAccount: Account, channel: Keypair, nowSeconds: number): Transaction {
+  const tx = new TransactionBuilder(sponsorAccount, {
+    fee: String(cfg.feePerOp), networkPassphrase: cfg.passphrase,
+    timebounds: { minTime: 0, maxTime: nowSeconds + 60 },
+  })
+    .addOperation(Operation.createAccount({ destination: channel.publicKey(), startingBalance: cfg.channelStartingXlm }))
     .build();
   tx.sign(cfg.sponsor);
   return tx;
@@ -113,14 +149,15 @@ export function checkInnerForFeeBump(cfg: Config, xdr: unknown, nowSeconds: numb
   const tx = parsed;
   if (tx.networkPassphrase !== Networks.TESTNET) throw new PolicyError(400, "testnet_only", "Testnet only");
   const sponsor = cfg.sponsor.publicKey();
-  if (tx.source === sponsor) throw new PolicyError(403, "sponsor_source", "The sponsor can't be the transaction source");
+  const service = new Set([sponsor, ...Array.from({ length: cfg.channels }, (_, i) => deriveChannel(cfg, i).publicKey())]);
+  if (service.has(tx.source)) throw new PolicyError(403, "sponsor_source", "The sponsor can't be the transaction source");
   if (tx.operations.length < 1 || tx.operations.length > MAX_OPS) throw new PolicyError(400, "op_count", `1 to ${MAX_OPS} operations allowed`);
   if (tx.signatures.length < 1) throw new PolicyError(400, "unsigned", "Sign the transaction first");
   const maxTime = Number(tx.timeBounds?.maxTime ?? 0);
   if (!maxTime || maxTime > nowSeconds + MAX_FUTURE_SECONDS) throw new PolicyError(400, "timebounds", "Transaction must expire within 5 minutes");
   if (maxTime < nowSeconds) throw new PolicyError(400, "expired", "Transaction already expired");
   for (const op of tx.operations) {
-    if (op.source === sponsor) throw new PolicyError(403, "sponsor_source", "The sponsor can't be an operation source");
+    if (op.source && service.has(op.source)) throw new PolicyError(403, "sponsor_source", "The sponsor can't be an operation source");
     if (op.type === "payment") {
       if (!sameAsset(op.asset, cfg.asset)) throw new PolicyError(403, "asset", "Only the configured asset is sponsored");
     } else if (op.type === "changeTrust") {
@@ -148,24 +185,3 @@ export function buildFeeBump(cfg: Config, inner: Transaction): FeeBumpTransactio
   return fb;
 }
 
-/* ---- fixed-window rate limiter (per isolate). Hosted use should add a
-   Cloudflare Rate Limiting binding or Durable Object for global limits. ---- */
-export class RateLimiter {
-  private windows = new Map<string, { count: number; resetAt: number }>();
-  constructor(private maxKeys = 50_000) {}
-  hit(key: string, limit: number, windowMs: number, now = Date.now()): boolean {
-    const w = this.windows.get(key);
-    if (!w || w.resetAt <= now) {
-      if (this.windows.size >= this.maxKeys) this.sweep(now);
-      this.windows.set(key, { count: 1, resetAt: now + windowMs });
-      return true;
-    }
-    if (w.count >= limit) return false;
-    w.count += 1;
-    return true;
-  }
-  private sweep(now: number) {
-    for (const [k, w] of this.windows) if (w.resetAt <= now) this.windows.delete(k);
-    if (this.windows.size >= this.maxKeys) this.windows.clear();
-  }
-}

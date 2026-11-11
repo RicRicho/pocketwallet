@@ -34,8 +34,9 @@ export function verifyOnboardingTx(xdr: string, user: string, asset: StellarAsse
   const ops = tx.operations;
   const ok = ops.length === 4
     && tx.source !== user
-    && ops[0].type === "beginSponsoringFutureReserves" && ops[0].sponsoredId === user && (ops[0].source ?? tx.source) === tx.source
-    && ops[1].type === "createAccount" && ops[1].destination === user && Number(ops[1].startingBalance) === 0
+    // ops 0-1 are the sponsor's (source = sponsor; tx source = a sign-up channel account)
+    && ops[0].type === "beginSponsoringFutureReserves" && ops[0].sponsoredId === user && (ops[0].source ?? tx.source) !== user
+    && ops[1].type === "createAccount" && ops[1].destination === user && Number(ops[1].startingBalance) === 0 && (ops[1].source ?? tx.source) !== user
     && ops[2].type === "changeTrust" && ops[2].source === user && "code" in ops[2].line
     && ops[2].line.code === asset.code && ops[2].line.issuer === asset.issuer
     && ops[3].type === "endSponsoringFutureReserves" && ops[3].source === user;
@@ -50,6 +51,8 @@ export async function onboardWithSponsor(base: string, keypair: Keypair, asset: 
   const tx = verifyOnboardingTx(xdr, keypair.publicKey(), asset);
   tx.sign(keypair);
   const res = await new Horizon.Server(STELLAR_TESTNET.horizonUrl).submitTransaction(tx);
+  // Best effort: free the sponsor's sign-up channel early.
+  await post(base, "/v1/onboard/release", { account: keypair.publicKey() }).catch(() => undefined);
   return res.hash;
 }
 
