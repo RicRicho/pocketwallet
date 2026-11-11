@@ -102,3 +102,17 @@ public/         icon.svg, _headers (CSP/HSTS for Cloudflare Pages)
 
 > Status: P0 Bitcoin wallet core — secure non-custodial setup, end-to-end.
 > Send/receive and live balances are deliberately scoped to the next build.
+
+## AUDD on Stellar — testnet preview (feature-flagged, off by default)
+
+Branch `feature/audd-stellar-testnet`. Build plan: [team wiki](https://wiki.ricricho.com/team/index.php?title=Wallet_Nation/Pocket_Wallet_AUDD_Stellar_build_plan).
+
+- Enable with `NEXT_PUBLIC_POCKETWALLET_STELLAR=testnet` at build time. Any other value (or unset) = off; production builds are unchanged.
+- The Stellar account is derived from the **same recovery phrase** (SEP-0005, `m/44'/148'/0'`). Nothing new is stored; the Bitcoin format and storage keys are unchanged.
+- Asset: official AUDD testnet issuer `GBAQ7FQE2AIXWTX4TCMXEMB3EZSBF565LK5NBKNBTAMLNLX3BHUTFRAI` by default. `NEXT_PUBLIC_STELLAR_TEST_ASSET=CODE:ISSUER` selects a stand-in, labelled in the UI as "TEST STAND-IN, not AUDD". Look-alike `AUDD` codes from other issuers and the mainnet issuer are refused.
+- Mainnet is refused in code (`assertTestnet`). Test XLM comes from Friendbot.
+- `lib/stellar.ts` (derivation, validation, trustline/payment/batch/fee-bump builders), `lib/stellar-network.ts` (Horizon), `components/AuddPanel.tsx` (lazy-loaded UI).
+- `buildBatchedPaymentsTx` + `wrapFeeBump` are the primitives for hub-relay consolidated settlement (one atomic transaction, up to 100 payments, one sponsor-paid fee).
+- Identity: no Blue Hat DID/VC key, credential, storage key or schema is read or changed. `lib/identity-isolation.test.ts` guards this.
+
+Tests: `npm test` (unit + identity isolation). Live testnet end-to-end: `STELLAR_E2E=1 npm test`.

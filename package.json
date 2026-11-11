@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@noble/curves": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
     "@scure/bip32": "^2.3.0",
+    "@stellar/stellar-sdk": "^14.6.1",
     "bip39": "^3.1.0",
     "bitcoinjs-lib": "^7.0.1",
+    "buffer": "^6.0.3",
     "next": "15.5.21",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",

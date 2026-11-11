@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
+import dynamic from "next/dynamic";
 import { Card, GhostButton, Logo, PrimaryButton } from "@/components/ui";
 import {
   forgetWallet, getLegacyPrototypeBackup, getMeta, getStoredWalletState,
@@ -17,7 +18,12 @@ import {
 } from "@/lib/bitcoin-network";
 
 const PASSCODE_LEN = 6;
-type Screen = "home" | "receive" | "send";
+type Screen = "home" | "receive" | "send" | "audd";
+
+// AUDD on Stellar (testnet preview). Off unless NEXT_PUBLIC_POCKETWALLET_STELLAR=testnet.
+// Inlined at build time; the panel and Stellar SDK load lazily only when enabled.
+const STELLAR_ENABLED = process.env.NEXT_PUBLIC_POCKETWALLET_STELLAR === "testnet";
+const AuddPanel = dynamic(() => import("@/components/AuddPanel"), { ssr: false });
 
 export default function WalletPage() {
   const [meta, setMeta] = useState<WalletMeta | null>(null);
@@ -134,18 +140,21 @@ function WalletApp({ wallet, meta }: { wallet: BitcoinWallet; meta: WalletMeta |
   useEffect(() => { void refresh(); }, [refresh]);
 
   if (screen === "receive") return <Receive wallet={wallet} onBack={() => setScreen("home")} />;
+  if (screen === "audd" && STELLAR_ENABLED) return <AuddPanel mnemonic={wallet.mnemonic} onBack={() => setScreen("home")} />;
   if (screen === "send") return <Send wallet={wallet} snapshot={snapshot} onBack={() => setScreen("home")} onSent={refresh} />;
   return (
     <Dashboard
       wallet={wallet} meta={meta} snapshot={snapshot} networkError={networkError}
       onReceive={() => setScreen("receive")} onSend={() => setScreen("send")} onRefresh={refresh}
+      onAudd={STELLAR_ENABLED ? () => setScreen("audd") : undefined}
     />
   );
 }
 
-function Dashboard({ wallet, meta, snapshot, networkError, onReceive, onSend, onRefresh }: {
+function Dashboard({ wallet, meta, snapshot, networkError, onReceive, onSend, onRefresh, onAudd }: {
   wallet: BitcoinWallet; meta: WalletMeta | null; snapshot: WalletSnapshot | null;
   networkError: string; onReceive: () => void; onSend: () => void; onRefresh: () => void;
+  onAudd?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const aud = snapshot?.audPerBtc ? satsToAud(snapshot.balanceSats, snapshot.audPerBtc) : null;
@@ -170,6 +179,7 @@ function Dashboard({ wallet, meta, snapshot, networkError, onReceive, onSend, on
         <PrimaryButton onClick={onReceive}>Receive</PrimaryButton>
         <PrimaryButton onClick={onSend}>Send</PrimaryButton>
       </div>
+      {onAudd && <div className="mt-3"><GhostButton onClick={onAudd}>A$ AUDD on Stellar (testnet preview)</GhostButton></div>}
       {networkError && <button onClick={onRefresh} className="mt-4 w-full text-center text-[13px] text-red-500">{networkError} Tap to retry.</button>}
       <p className="mt-5 text-center text-[13px] text-haze">Bitcoin {wallet.network === "mainnet" ? "mainnet" : "testnet"}</p>
       <div className="mt-6"><GhostButton onClick={() => {
