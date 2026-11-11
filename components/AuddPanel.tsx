@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { GhostButton, PrimaryButton } from "@/components/ui";
 import { formatAud, resolveAsset, stellarKeypairFromMnemonic } from "@/lib/stellar";
+import { onboardWithSponsor, sendWithSponsor, sponsorUrl } from "@/lib/sponsor-client";
 import {
   addTrustline, fundWithFriendbot, loadStellarSnapshot, previewAssetSend, sendAsset, testnetExplorerTx,
   type AssetSendPreview, type StellarSnapshot,
@@ -20,6 +21,7 @@ export default function AuddPanel({ mnemonic, onBack }: { mnemonic: string; onBa
   const asset = useMemo(() => resolveAsset(), []);
   const keypair = useMemo(() => stellarKeypairFromMnemonic(mnemonic), [mnemonic]);
   const accountId = keypair.publicKey();
+  const sponsor = useMemo(() => sponsorUrl(), []);
   const [snap, setSnap] = useState<StellarSnapshot | null>(null);
   const [view, setView] = useState<View>("home");
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,7 @@ export default function AuddPanel({ mnemonic, onBack }: { mnemonic: string; onBa
 
   if (view === "receive") return <>{banner}<ReceiveAudd accountId={accountId} code={asset.code} onBack={() => setView("home")} /></>;
   if (view === "send" && snap) return <>{banner}<SendAudd snap={snap} onBack={() => setView("home")} onSent={refresh}
-    send={(p) => sendAsset(keypair, p, asset)} preview={(d, a) => previewAssetSend(snap, d, a, asset)} code={asset.code} /></>;
+    send={(p) => sponsor ? sendWithSponsor(sponsor, keypair, p, asset) : sendAsset(keypair, p, asset)} preview={(d, a) => previewAssetSend(snap, d, a, asset)} code={asset.code} /></>;
 
   return (
     <div className="animate-fade-up">
@@ -59,7 +61,12 @@ export default function AuddPanel({ mnemonic, onBack }: { mnemonic: string; onBa
         <div className="mt-2 break-all text-[12px] text-white/70">{accountId}</div>
       </div>
       <div className="mt-5 space-y-2">
-        {snap && !snap.exists && (
+        {snap && !snap.exists && sponsor && (
+          <PrimaryButton disabled={busy} onClick={() => void act(() => onboardWithSponsor(sponsor, keypair, asset), "Couldn't set up AUDD. Try again shortly.")}>
+            {busy ? "Setting up…" : `Turn on ${asset.code} (no fees for you)`}
+          </PrimaryButton>
+        )}
+        {snap && !snap.exists && !sponsor && (
           <PrimaryButton disabled={busy} onClick={() => void act(() => fundWithFriendbot(accountId), "Couldn't activate the test account.")}>
             {busy ? "Activating…" : "Activate test account (free test XLM)"}
           </PrimaryButton>
@@ -75,7 +82,7 @@ export default function AuddPanel({ mnemonic, onBack }: { mnemonic: string; onBa
             <PrimaryButton onClick={() => setView("send")}>Send</PrimaryButton>
           </div>
         )}
-        {snap?.exists && <p className="text-center text-[12px] text-haze">Test XLM for fees: {Number(snap.xlm).toFixed(2)}</p>}
+        {snap?.exists && <p className="text-center text-[12px] text-haze">{sponsor ? "Network fees paid by PocketWallet (testnet sponsor)" : `Test XLM for fees: ${Number(snap.xlm).toFixed(2)}`}</p>}
         {error && <button onClick={() => void refresh()} className="w-full text-center text-[13px] text-red-500">{error} Tap to retry.</button>}
         <GhostButton onClick={onBack}>Back to Bitcoin</GhostButton>
       </div>

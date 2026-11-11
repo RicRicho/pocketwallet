@@ -115,4 +115,6 @@ Branch `feature/audd-stellar-testnet`. Build plan: [team wiki](https://wiki.ricr
 - `buildSponsoredOnboardingTx` lets a sponsor create a user account with 0 XLM and pay its AUDD trustline reserve (live-tested). `buildBatchedPaymentsTx` + `wrapFeeBump` are the primitives for hub-relay consolidated settlement (one atomic transaction, up to 100 payments, one sponsor-paid fee).
 - Identity: no Blue Hat DID/VC key, credential, storage key or schema is read or changed. `lib/identity-isolation.test.ts` guards this.
 
-Tests: `npm test` (unit + identity isolation). Live testnet end-to-end: `STELLAR_E2E=1 npm test`.
+- Sponsor service: `sponsor-worker/` (Cloudflare Worker, not deployed). Set `NEXT_PUBLIC_STELLAR_SPONSOR_URL` to use it; see `sponsor-worker/README.md`.
+
+Tests: `npm test` (unit + identity isolation + sponsor policy). Live testnet end-to-end: `STELLAR_E2E=1 npm test`; sponsor Worker locally + testnet: `./sponsor-worker/run-local-e2e.sh`.

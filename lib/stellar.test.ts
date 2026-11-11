@@ -109,6 +109,7 @@ describe("transaction builders (testnet only)", () => {
     const inner = buildPaymentTx(new Account(a, "1"), b, "1", audd);
     const fb = wrapFeeBump(inner, sponsor);
     expect(fb.feeSource).toBe(sponsor.publicKey());
+    expect(fb.fee).toBe("200"); // 100 stroops x (1 op + 1)
     expect(TransactionBuilder.fromXDR(fb.toXDR(), Networks.TESTNET)).toBeTruthy();
   });
   it("builds sponsored onboarding (user needs 0 XLM)", () => {

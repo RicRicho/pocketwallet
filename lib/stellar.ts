@@ -200,9 +200,8 @@ export function requiredBatchSigners(envelopeSource: string, legs: BatchLeg[]): 
 /** Sponsor pays the fee for a user-signed transaction (users need no XLM for fees). */
 export function wrapFeeBump(inner: Transaction, sponsor: Keypair, passphrase = STELLAR_TESTNET.passphrase): FeeBumpTransaction {
   assertTestnet(passphrase);
-  const perOp = BigInt(BASE_FEE);
-  const fee = (perOp * BigInt(inner.operations.length + 1)).toString();
-  const fb = TransactionBuilder.buildFeeBumpTransaction(sponsor, fee, inner, passphrase);
+  // Per-operation base fee; the SDK multiplies by (inner ops + 1).
+  const fb = TransactionBuilder.buildFeeBumpTransaction(sponsor, BASE_FEE, inner, passphrase);
   fb.sign(sponsor);
   return fb;
 }

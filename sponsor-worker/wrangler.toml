@@ -1,0 +1,24 @@
+# PocketWallet testnet sponsor service (Cloudflare Worker).
+# NOT DEPLOYED. Testnet only. Deploying needs Ric's decision (Linear RIC-658).
+#
+# Secret: SPONSOR_SECRET (Stellar testnet secret key, S...). Set it ONLY with
+#   npx wrangler secret put SPONSOR_SECRET        (hosted)
+#   .dev.vars or --var SPONSOR_SECRET:...          (local dev; .dev.vars is gitignored)
+# Never put it in this file or commit it.
+name = "pocketwallet-sponsor-testnet"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+NETWORK = "testnet"
+HORIZON_URL = "https://horizon-testnet.stellar.org"
+# Official AUDD testnet asset. Override with a stand-in (e.g. TAUD:G...) for e2e tests.
+ASSET = "AUDD:GBAQ7FQE2AIXWTX4TCMXEMB3EZSBF565LK5NBKNBTAMLNLX3BHUTFRAI"
+# Comma-separated browser origins allowed to call the service.
+ALLOWED_ORIGINS = "http://localhost:3000"
+MAX_ONBOARD_PER_IP_PER_HOUR = "5"
+MAX_ONBOARD_PER_DAY = "200"
+MAX_FEEBUMP_PER_IP_PER_MINUTE = "20"
+FEE_PER_OP_STROOPS = "100"
+MAX_FEE_STROOPS = "20000"
