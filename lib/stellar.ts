@@ -211,3 +211,24 @@ export function wrapFeeBump(inner: Transaction, sponsor: Keypair, passphrase = S
 export function minimumBalanceXlm(subentries: number, baseReserveXlm = 0.5): number {
   return (2 + subentries) * baseReserveXlm;
 }
+
+/**
+ * Sponsored onboarding: a Wallet Nation sponsor creates the user's account with
+ * 0 XLM and pays the reserves for the account and its AUDD trustline (about
+ * 1.5 XLM, refundable). Both sponsor and user must sign. The sponsor never sees
+ * the user's phrase or secret key — only the user's public key.
+ */
+export function buildSponsoredOnboardingTx(
+  sponsorAccount: Account, userPublicKey: string, asset: StellarAssetConfig,
+  passphrase = STELLAR_TESTNET.passphrase,
+): Transaction {
+  assertTestnet(passphrase);
+  if (!isStellarAccountId(userPublicKey)) throw new Error("Invalid user account");
+  return new TransactionBuilder(sponsorAccount, { fee: BASE_FEE, networkPassphrase: passphrase })
+    .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: userPublicKey }))
+    .addOperation(Operation.createAccount({ destination: userPublicKey, startingBalance: "0" }))
+    .addOperation(Operation.changeTrust({ asset: toSdkAsset(asset), source: userPublicKey }))
+    .addOperation(Operation.endSponsoringFutureReserves({ source: userPublicKey }))
+    .setTimeout(TIMEOUT_SECONDS)
+    .build();
+}

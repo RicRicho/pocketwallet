@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   AUDD_MAINNET_ISSUER, AUDD_TESTNET_ISSUER, MAX_OPS_PER_TX, buildBatchedPaymentsTx, buildPaymentTx,
-  buildTrustlineTx, minimumBalanceXlm, parseAssetAmount, requiredBatchSigners, resolveAsset,
+  buildSponsoredOnboardingTx, buildTrustlineTx, minimumBalanceXlm, parseAssetAmount, requiredBatchSigners, resolveAsset,
   stellarFeatureEnabled, stellarKeypairFromMnemonic, toStroops, wrapFeeBump,
 } from "./stellar";
 import { walletFromMnemonic } from "./wallet";
@@ -110,5 +110,12 @@ describe("transaction builders (testnet only)", () => {
     const fb = wrapFeeBump(inner, sponsor);
     expect(fb.feeSource).toBe(sponsor.publicKey());
     expect(TransactionBuilder.fromXDR(fb.toXDR(), Networks.TESTNET)).toBeTruthy();
+  });
+  it("builds sponsored onboarding (user needs 0 XLM)", () => {
+    const sponsor = Keypair.random().publicKey();
+    const tx = buildSponsoredOnboardingTx(new Account(sponsor, "1"), a, audd);
+    expect(tx.operations.map((o) => o.type)).toEqual(["beginSponsoringFutureReserves", "createAccount", "changeTrust", "endSponsoringFutureReserves"]);
+    expect(tx.operations[2].source).toBe(a);
+    expect(() => buildSponsoredOnboardingTx(new Account(sponsor, "1"), a, audd, Networks.PUBLIC)).toThrow(/testnet/);
   });
 });

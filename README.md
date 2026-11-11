@@ -112,7 +112,7 @@ Branch `feature/audd-stellar-testnet`. Build plan: [team wiki](https://wiki.ricr
 - Asset: official AUDD testnet issuer `GBAQ7FQE2AIXWTX4TCMXEMB3EZSBF565LK5NBKNBTAMLNLX3BHUTFRAI` by default. `NEXT_PUBLIC_STELLAR_TEST_ASSET=CODE:ISSUER` selects a stand-in, labelled in the UI as "TEST STAND-IN, not AUDD". Look-alike `AUDD` codes from other issuers and the mainnet issuer are refused.
 - Mainnet is refused in code (`assertTestnet`). Test XLM comes from Friendbot.
 - `lib/stellar.ts` (derivation, validation, trustline/payment/batch/fee-bump builders), `lib/stellar-network.ts` (Horizon), `components/AuddPanel.tsx` (lazy-loaded UI).
-- `buildBatchedPaymentsTx` + `wrapFeeBump` are the primitives for hub-relay consolidated settlement (one atomic transaction, up to 100 payments, one sponsor-paid fee).
+- `buildSponsoredOnboardingTx` lets a sponsor create a user account with 0 XLM and pay its AUDD trustline reserve (live-tested). `buildBatchedPaymentsTx` + `wrapFeeBump` are the primitives for hub-relay consolidated settlement (one atomic transaction, up to 100 payments, one sponsor-paid fee).
 - Identity: no Blue Hat DID/VC key, credential, storage key or schema is read or changed. `lib/identity-isolation.test.ts` guards this.
 
 Tests: `npm test` (unit + identity isolation). Live testnet end-to-end: `STELLAR_E2E=1 npm test`.

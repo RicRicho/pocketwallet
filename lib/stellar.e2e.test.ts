@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Asset, Horizon, Keypair, Operation, TransactionBuilder, BASE_FEE } from "@stellar/stellar-sdk";
-import { STELLAR_TESTNET, buildBatchedPaymentsTx, resolveAsset, wrapFeeBump, stellarKeypairFromMnemonic } from "./stellar";
+import { STELLAR_TESTNET, buildBatchedPaymentsTx, buildSponsoredOnboardingTx, buildPaymentTx, resolveAsset, wrapFeeBump, stellarKeypairFromMnemonic } from "./stellar";
 import { addTrustline, fundWithFriendbot, loadStellarSnapshot, previewAssetSend, sendAsset } from "./stellar-network";
 import * as bip39 from "bip39";
 
@@ -61,5 +61,33 @@ run("Stellar testnet end-to-end", () => {
     const a = await loadStellarSnapshot(alice.publicKey(), taud);
     expect(a.assetBalance).toBe("84.2000000");
     console.log("E2E OK", { send: hash1, batch: res.hash, merchant: merchant.publicKey() });
+  }, 120_000);
+
+  it("sponsored onboarding: a user with 0 XLM turns on the asset and sends, sponsor pays everything", async () => {
+    const sponsor = Keypair.random();
+    const issuer = Keypair.random();
+    await Promise.all([sponsor, issuer].map((k) => fundWithFriendbot(k.publicKey())));
+    const taud = resolveAsset(`TAUD:${issuer.publicKey()}`);
+    const user = stellarKeypairFromMnemonic(bip39.generateMnemonic(128));
+    const merchant = stellarKeypairFromMnemonic(bip39.generateMnemonic(128));
+    for (const u of [user, merchant]) {
+      const tx = buildSponsoredOnboardingTx(await server.loadAccount(sponsor.publicKey()), u.publicKey(), taud);
+      tx.sign(sponsor, u);
+      await server.submitTransaction(tx);
+    }
+    const snap0 = await loadStellarSnapshot(user.publicKey(), taud);
+    expect(snap0).toMatchObject({ exists: true, xlm: "0.0000000", hasTrustline: true });
+    const iss = await server.loadAccount(issuer.publicKey());
+    const mint = new TransactionBuilder(iss, { fee: BASE_FEE, networkPassphrase: STELLAR_TESTNET.passphrase })
+      .addOperation(Operation.payment({ destination: user.publicKey(), asset: new Asset("TAUD", issuer.publicKey()), amount: "20" })).setTimeout(120).build();
+    mint.sign(issuer); await server.submitTransaction(mint);
+    // User (0 XLM) signs a payment; sponsor fee-bumps it.
+    const inner = buildPaymentTx(await server.loadAccount(user.publicKey()), merchant.publicKey(), "7.77", taud);
+    inner.sign(user);
+    const res = await server.submitTransaction(wrapFeeBump(inner, sponsor));
+    expect(res.successful).toBe(true);
+    expect((await loadStellarSnapshot(merchant.publicKey(), taud)).assetBalance).toBe("7.7700000");
+    expect((await loadStellarSnapshot(user.publicKey(), taud)).xlm).toBe("0.0000000");
+    console.log("SPONSORED OK", res.hash);
   }, 120_000);
 });
