@@ -20,8 +20,11 @@ import { hmac } from "@noble/hashes/hmac";
 import { sha512 } from "@noble/hashes/sha512";
 import {
   Asset, BASE_FEE, Keypair, Networks, Operation, StrKey, TransactionBuilder,
-  type Account, type FeeBumpTransaction, type Transaction,
+  type FeeBumpTransaction, type Transaction,
 } from "@stellar/stellar-sdk";
+
+/** Anything TransactionBuilder accepts as a source (Account or Horizon AccountResponse). */
+type Account = ConstructorParameters<typeof TransactionBuilder>[0];
 import { normalizePhrase, isValidMnemonic } from "./wallet";
 
 /** Feature flag. Only the literal value "testnet" enables AUDD/Stellar. */
