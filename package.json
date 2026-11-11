@@ -2,10 +2,11 @@
   "name": "pocketwallet",
   "version": "0.1.0",
   "private": true,
-  "description": "pocketwallet.io — hosted, non-custodial web wallet with an Apple-style setup experience.",
+  "description": "pocketwallet.io \u2014 hosted, non-custodial web wallet with an Apple-style setup experience.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/patch-csp.mjs out/_headers",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run --pool=forks"
