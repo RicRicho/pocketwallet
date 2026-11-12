@@ -24,6 +24,8 @@ FEE_PER_OP_STROOPS = "100"
 MAX_FEE_STROOPS = "20000"
 # Channel accounts (derived from the sponsor secret) remove sequence-number collisions.
 CHANNELS = "5"
+# Shared ledger: transfers between Pocket Wallet users must be under this amount.
+MAX_INTERNAL_TRANSFER_AUDD = "1000"
 CHANNEL_STARTING_XLM = "3"
 # Shared-account ledger: pick up deposits and settle outside withdrawals every minute.
 [triggers]

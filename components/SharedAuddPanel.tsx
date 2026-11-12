@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { GhostButton, PrimaryButton } from "@/components/ui";
-import { MAINNET_TEST_CAP_AUD, formatAud, stellarBuild, stellarKeypairFromMnemonic } from "@/lib/stellar";
+import { INTERNAL_TRANSFER_UNDER_AUD, MAINNET_TEST_CAP_AUD, formatAud, stellarBuild, stellarKeypairFromMnemonic } from "@/lib/stellar";
 import { sponsorUrl } from "@/lib/sponsor-client";
 import { isPocketWalletAddress, isStellarAddress, ledgerBalance, ledgerRegister, ledgerSend, ledgerSync, type LedgerView } from "@/lib/ledger-client";
 
@@ -119,14 +119,16 @@ function Send({ me, code, onBack, send }: { me: LedgerView; code: string; onBack
   const [done, setDone] = useState<string>("");
   const dest = to.trim();
   const internal = isPocketWalletAddress(dest, me.shared);
-  const valid = isStellarAddress(dest) && /^\d+(\.\d{1,7})?$/.test(amount) && Number(amount) > 0 && Number(amount) <= Number(me.balance);
+  const overLimit = internal && Number(amount) >= INTERNAL_TRANSFER_UNDER_AUD;
+  const valid = isStellarAddress(dest) && /^\d+(\.\d{1,7})?$/.test(amount) && Number(amount) > 0 && Number(amount) <= Number(me.balance) && !overLimit;
   if (done) return <div className="animate-fade-up space-y-4"><p className="text-[17px] font-semibold" data-testid="send-result">{done}</p><GhostButton onClick={onBack}>Done</GhostButton></div>;
   return (
     <div className="animate-fade-up space-y-4">
       <h2 className="text-[22px] font-bold">Send {code}</h2>
       <input aria-label="Recipient address" className="w-full rounded-xl border p-3 font-mono text-[13px]" placeholder="M… or G… address" value={to} onChange={(e) => setTo(e.target.value)} />
       <input aria-label="Amount" inputMode="decimal" className="w-full rounded-xl border p-3 text-[17px]" placeholder="Amount (A$)" value={amount} onChange={(e) => setAmount(e.target.value)} />
-      {isStellarAddress(dest) && <p className="text-[13px] text-ink/70" data-testid="send-route">{internal ? "Pocket Wallet user: arrives instantly, no fee." : "Outside Stellar address: goes out in the next batch (usually within a minute). The recipient needs an AUDD trustline."}</p>}
+      {isStellarAddress(dest) && <p className="text-[13px] text-ink/70" data-testid="send-route">{internal ? `Pocket Wallet user: arrives instantly, no fee. Each transfer must be under ${formatAud(String(INTERNAL_TRANSFER_UNDER_AUD))}.` : "Outside Stellar address: goes out in the next batch (usually within a minute). The recipient needs an AUDD trustline."}</p>}
+      {overLimit && <p className="text-[14px] text-red-600" data-testid="transfer-limit">Transfers to other Pocket Wallet users must be under {formatAud(String(INTERNAL_TRANSFER_UNDER_AUD))}.</p>}
       <p className="text-[13px] text-ink/60">Available: {formatAud(me.balance)}</p>
       {error && <p className="text-[14px] text-red-600">{error}</p>}
       <PrimaryButton disabled={!valid || busy} onClick={() => { setBusy(true); setError("");

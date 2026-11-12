@@ -1,5 +1,5 @@
 /**
- * Shared-account AUDD ledger (omnibus custody, SEP-0023 muxed sub-addresses).
+ * Shared-account AUDD ledger (one omnibus account, SEP-0023 muxed sub-addresses).
  *
  * - ONE Stellar account (the "shared account") holds the AUDD trustline. Users
  *   have NO Stellar account and need NO XLM reserve.
@@ -38,6 +38,8 @@ export interface LedgerEnv extends Env {
   MAX_TOTAL_AUDD?: string;
   MAX_USER_AUDD?: string;
   MAX_SEND_AUDD?: string;
+  /** Internal user-to-user transfers must be strictly UNDER this amount (default 1000). */
+  MAX_INTERNAL_TRANSFER_AUDD?: string;
   MAX_SENDS_PER_USER_PER_MINUTE?: string;
 }
 
@@ -50,6 +52,8 @@ export interface LedgerConfig {
   adminToken: string | null;
   feePerOp: number;
   caps: { total: bigint; user: bigint; send: bigint };
+  /** Internal transfers must be < this (stroops). */
+  internalTransferLimit: bigint;
 }
 
 function capAudd(v: string | undefined, d: number, hardMax: number): bigint {
@@ -84,6 +88,7 @@ export function loadLedgerConfig(env: LedgerEnv): LedgerConfig {
       user: capAudd(env.MAX_USER_AUDD, main ? 300 : 10_000, hard),
       send: capAudd(env.MAX_SEND_AUDD, main ? 300 : 10_000, hard),
     },
+    internalTransferLimit: capAudd(env.MAX_INTERNAL_TRANSFER_AUDD, 1000, 1_000_000),
   };
 }
 
@@ -194,6 +199,9 @@ export class Ledger {
     if (amount <= 0n) throw new PolicyError(400, "bad_amount", "Amount must be above zero");
     if (amount > this.cfg.caps.send) throw new PolicyError(403, "cap", `Above the per-send cap of ${fromStroops(this.cfg.caps.send)}`);
     const dest = classifyDestination(this.cfg, body.to);
+    if (dest.kind === "internal" && amount >= this.cfg.internalTransferLimit) {
+      throw new PolicyError(403, "transfer_limit", `Transfers to other Pocket Wallet users must be under A$${fromStroops(this.cfg.internalTransferLimit).replace(/\.?0+$/, "")}`);
+    }
     if (dest.kind === "external") {
       if (dest.base === this.cfg.asset.getIssuer()) throw new PolicyError(400, "bad_destination", "Sending to the issuer would burn the AUDD; use AUDD's redemption process instead");
       await checkExternal(dest.base); // outside the lock: Horizon read
@@ -372,7 +380,7 @@ export class Ledger {
     const held = susp.reduce((s, x) => s + BigInt(x.amount), 0n);
     const liab = await this.liab();
     return { network: this.cfg.network, shared: this.cfg.shared.publicKey(), accountExists: r.ok, xlm, onChain: fromStroops(onChain), owedToUsers: fromStroops(liab), suspense: fromStroops(held),
-      covered: onChain >= liab, caps: { total: fromStroops(this.cfg.caps.total), user: fromStroops(this.cfg.caps.user), send: fromStroops(this.cfg.caps.send) } };
+      covered: onChain >= liab, caps: { total: fromStroops(this.cfg.caps.total), user: fromStroops(this.cfg.caps.user), send: fromStroops(this.cfg.caps.send), internalTransferUnder: fromStroops(this.cfg.internalTransferLimit) } };
   }
 
   async listSuspense() { return [...(await this.s.list<Suspense>({ prefix: "L:susp:" })).values()].map((x) => ({ ...x, amount: fromStroops(BigInt(x.amount)) })); }

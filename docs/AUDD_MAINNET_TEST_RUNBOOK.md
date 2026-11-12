@@ -21,7 +21,9 @@ For this test the shared account's trustline is capped at **300 AUDD**. Stellar 
 
 At 1 million users, if every user sends money outside once a month, that's about 10 XLM a month, roughly **A$2 a month** at normal fees. When the network is busy, fees can briefly rise about 250× (today's highest recent fee, the p99, was 25,274 stroops per payment). Even then it would be about A$540 a month for 1M outside payments.
 
-So the per-user blockchain cost is effectively zero. The real costs are elsewhere: running the service (Cloudflare) and, above all, **looking after customers' money**. In this design Pocket Wallet holds users' AUDD, so it is custodial. That needs legal advice (for example on licensing and AML/CTF) before anyone other than you puts real money in.
+So the per-user blockchain cost is effectively zero. The remaining running cost is the service itself (Cloudflare).
+
+Transfers between Pocket Wallet users must be **under A$1,000 each** (`MAX_INTERNAL_TRANSFER_AUDD`, default 1000). In this capped test the A$300 limit applies on top.
 
 ## What you need before starting (Ric)
 1. **Your go-ahead** for three things: deploying the mainnet-test service, building a preview version of the app (not pocketwallet.io), and the A$300 cap.
@@ -54,7 +56,7 @@ So the per-user blockchain cost is effectively zero. The real costs are elsewher
 |---|---|---|
 | 1 | Open the preview and use a **test** recovery phrase, not your real Bitcoin one. Tap **"A$ AUDD (LIVE test, capped)"**, then **Receive**. You'll see the red LIVE banner, your M… address, and the shared G… address with your memo number. | You get an AUDD address with no Stellar account and no XLM |
 | 2 | From your own wallet, send **A$5 AUDD** to your M… address. If your wallet can't send to M addresses, send to the shared G… address with memo type ID = your memo number. Tap **Refresh**. | Money from outside is credited to the right person |
-| 3 | On a second phone or browser profile, open the preview with a **second** test phrase and copy its M… address. From user 1, send **A$2** to it. | Pocket Wallet to Pocket Wallet is instant and free. stellar.expert shows **no** new transaction on the shared account |
+| 3 | On a second phone or browser profile, open the preview with a **second** test phrase and copy its M… address. From user 1, send **A$2** to it. Each user-to-user transfer must be under A$1,000. | Pocket Wallet to Pocket Wallet is instant and free. stellar.expert shows **no** new transaction on the shared account |
 | 4 | Within the same minute, send **A$1** from user 1 and **A$1** from user 2 to **your own wallet's G… address**. | Outside payments are batched. Within about a minute **one** transaction from the shared account pays you A$2 in a single payment, because both go to the same address and are combined |
 | 5 | Send **A$1 AUDD with no memo** to the shared G… address. Ask Wally to check the held list and refund it. | Payments that can't be matched aren't lost: they're held and sent back |
 | 6 | Open `<service URL>/v1/ledger/reserves`. | The books balance: "onChain" equals "owedToUsers" plus "suspense", and "covered" is true |

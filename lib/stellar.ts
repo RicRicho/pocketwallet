@@ -51,6 +51,8 @@ export function stellarCustody(build: StellarBuild = stellarBuild(), mode: strin
   return build === "testnet" && mode === "self" ? "self" : "shared";
 }
 export const MAINNET_TEST_CAP_AUD = 300;
+/** Transfers to other Pocket Wallet users must be strictly under this (A$). The service enforces it too. */
+export const INTERNAL_TRANSFER_UNDER_AUD = Number(process.env.NEXT_PUBLIC_AUDD_INTERNAL_TRANSFER_UNDER || 1000);
 
 /** Official AUDD issuers, from AUDD's devhub "Supported Blockchains" table and
  * https://audd.digital/.well-known/stellar.toml (checked 12 Nov 2026). */

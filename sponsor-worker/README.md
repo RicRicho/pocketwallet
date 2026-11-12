@@ -10,7 +10,7 @@
 |---|---|
 | `POST /v1/ledger/register` (signed) | Returns `{id, muxed M…, shared G…, memo, balance}`. Calling it again returns the same answer. |
 | `POST /v1/ledger/balance` (signed) | Returns the balance and recent activity. |
-| `POST /v1/ledger/send` (signed) `{to, amount}` | If `to` is a Pocket Wallet M… address, it's an **internal** move: instant, free, nothing on-chain. Any other G… or M… address becomes an **outside withdrawal**, queued for the next batch. The service first checks the recipient exists and has a trustline. Sending to the issuer or to the shared account itself is refused. |
+| `POST /v1/ledger/send` (signed) `{to, amount}` | If `to` is a Pocket Wallet M… address, it's an **internal** move: instant, free, nothing on-chain, and it must be **under A$1,000** (`MAX_INTERNAL_TRANSFER_AUDD`, default 1000; 1000 or more is refused with `transfer_limit`). Any other G… or M… address becomes an **outside withdrawal**, queued for the next batch. The service first checks the recipient exists and has a trustline. Sending to the issuer or to the shared account itself is refused. |
 | `POST /v1/ledger/sync` | Reads incoming payments from Horizon and credits users by `to_muxed_id`, falling back to an ID or numeric text memo. Anything it can't match goes to suspense. |
 | `GET/POST /v1/ledger/reserves` | Proof of reserves: AUDD held on-chain versus what users are owed, what's held in suspense, the caps, and whether everything is covered. |
 | `POST /v1/ledger/admin/settle` (Bearer `ADMIN_TOKEN`) | Settles pending withdrawals. Amounts going to the same address are combined, with up to 100 payments per transaction. |
@@ -36,7 +36,6 @@
 - **Internal payments:** free. **Deposits:** the sender pays.
 - **Outside withdrawals:** 100 stroops (0.00001 XLM) per destination, batched up to 100 per transaction. At 1M users each withdrawing once a month, that's about 10 XLM (about A$2) a month at base fee. At today's p99 surge fee (25,274 stroops) it would be about A$540 a month.
 - **For comparison:** per-user accounts at 1M users lock 1.5M XLM, about A$320,000.
-- **Trade-off:** this design is custodial. Pocket Wallet holds users' AUDD in one account and runs the ledger, which needs legal advice before real customers use it.
 
 
 

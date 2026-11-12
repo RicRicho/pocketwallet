@@ -18,6 +18,7 @@ ALLOWED_ORIGINS = ""   # set to the exact preview origin of the mainnet-test app
 MAX_TOTAL_AUDD = "300"
 MAX_USER_AUDD = "300"
 MAX_SEND_AUDD = "300"
+MAX_INTERNAL_TRANSFER_AUDD = "1000"   # user-to-user transfers must be under this
 MAX_ONBOARD_PER_IP_PER_HOUR = "5"
 MAX_SENDS_PER_USER_PER_MINUTE = "10"
 FEE_PER_OP_STROOPS = "100"

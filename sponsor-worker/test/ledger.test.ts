@@ -206,6 +206,29 @@ describe("shared account: users have no Stellar account", () => {
     expect(rr).toMatchObject({ onChain: "90.0000000", owedToUsers: "90.0000000", suspense: "0.0000000" });
   });
 
+  it("internal user-to-user transfers must be under A$1,000 by default (configurable)", async () => {
+    env = { ...baseEnv, MAX_USER_AUDD: "5000", MAX_SEND_AUDD: "5000" }; env.COORDINATOR = ns(env);
+    const [a, b] = [await user(), await user()];
+    hz.deposit({ from: Keypair.random().publicKey(), amount: "3000", muxedId: a.id }); await call("/v1/ledger/sync");
+    const big = await call("/v1/ledger/send", signed(a.kp, { action: "send", to: b.muxed, amount: "1000" }));
+    expect(big.status).toBe(403);
+    expect(big.body).toMatchObject({ error: "transfer_limit", message: "Transfers to other Pocket Wallet users must be under A$1000" });
+    expect((await call("/v1/ledger/send", signed(a.kp, { action: "send", to: b.muxed, amount: "1500.25" }))).body.error).toBe("transfer_limit");
+    expect((await call("/v1/ledger/send", signed(a.kp, { action: "send", to: b.muxed, amount: "999.9999999" }))).status).toBe(200);
+    expect(await bal(b.kp)).toBe("999.9999999");
+    expect((await call("/v1/ledger/reserves")).body.caps.internalTransferUnder).toBe("1000.0000000");
+    // the limit applies to user-to-user only, not to sends to outside addresses
+    const ext = Keypair.random().publicKey(); hz.fund(ext);
+    expect((await call("/v1/ledger/send", signed(a.kp, { action: "send", to: ext, amount: "1200" }))).body).toMatchObject({ kind: "external", state: "pending" });
+    // configurable
+    env = { ...baseEnv, MAX_INTERNAL_TRANSFER_AUDD: "50" }; env.COORDINATOR = ns(env);
+    const [c, d] = [await user(), await user()];
+    hz.deposit({ from: ext, amount: "100", muxedId: c.id }); await call("/v1/ledger/sync");
+    expect((await call("/v1/ledger/send", signed(c.kp, { action: "send", to: d.muxed, amount: "50" }))).body.message).toBe("Transfers to other Pocket Wallet users must be under A$50");
+    expect((await call("/v1/ledger/send", signed(c.kp, { action: "send", to: d.muxed, amount: "49.99" }))).status).toBe(200);
+    expect(loadLedgerConfig({ ...baseEnv }).internalTransferLimit).toBe(10_000_000_000n);
+  });
+
   it("admin endpoints need the token", async () => {
     expect((await call("/v1/ledger/admin/settle")).status).toBe(401);
     expect((await call("/v1/ledger/admin/settle", {}, { Authorization: "Bearer wrong-token-0123456789" })).status).toBe(401);
