@@ -1,4 +1,46 @@
-# PocketWallet testnet sponsor service (Cloudflare Worker)
+# Pocket Wallet AUDD service (Cloudflare Worker)
+
+**Not deployed.** It has two modes:
+
+1. **Shared-account ledger (default).** One Stellar account holds AUDD for everyone. Users get muxed **M…** sub-addresses (SEP-0023), so there is **no per-user Stellar account and no per-user XLM reserve**. See "Shared-account ledger" below. It runs on `testnet` or in Ric's capped `mainnet-test` mode, configured in `wrangler.mainnet-test.toml`. The live test steps are in [docs/AUDD_MAINNET_TEST_RUNBOOK.md](../docs/AUDD_MAINNET_TEST_RUNBOOK.md).
+2. **Per-user self-custody sponsor (optional, testnet only).** This is the earlier design, documented below. Ric rejected it at scale because every user's account locks 1.5 XLM.
+
+## Shared-account ledger
+| Endpoint | What it does |
+|---|---|
+| `POST /v1/ledger/register` (signed) | Returns `{id, muxed M…, shared G…, memo, balance}`. Calling it again returns the same answer. |
+| `POST /v1/ledger/balance` (signed) | Returns the balance and recent activity. |
+| `POST /v1/ledger/send` (signed) `{to, amount}` | If `to` is a Pocket Wallet M… address, it's an **internal** move: instant, free, nothing on-chain. Any other G… or M… address becomes an **outside withdrawal**, queued for the next batch. The service first checks the recipient exists and has a trustline. Sending to the issuer or to the shared account itself is refused. |
+| `POST /v1/ledger/sync` | Reads incoming payments from Horizon and credits users by `to_muxed_id`, falling back to an ID or numeric text memo. Anything it can't match goes to suspense. |
+| `GET/POST /v1/ledger/reserves` | Proof of reserves: AUDD held on-chain versus what users are owed, what's held in suspense, the caps, and whether everything is covered. |
+| `POST /v1/ledger/admin/settle` (Bearer `ADMIN_TOKEN`) | Settles pending withdrawals. Amounts going to the same address are combined, with up to 100 payments per transaction. |
+| `POST /v1/ledger/admin/suspense`, `/admin/refund {key}` | Lists held deposits, and queues a refund to the original sender. |
+| cron, every minute | Runs sync, then settle. |
+
+- **Signed requests.** Each request is signed with the user's ed25519 key, derived from their recovery phrase (SEP-0005). The signature covers the network name and a nonce: requests expire after 5 minutes, and sends must use a strictly increasing nonce, so a signed request can't be replayed or used on the other network.
+- **One writer.** All ledger state lives in the global Durable Object, and every change goes through one lock. That covers balances, withdrawals and the shared account's sequence number.
+- **Safe settlement.** The service records the transaction hash before submitting.
+  - If the response is lost, the next run looks the hash up on Horizon. It marks the withdrawal settled if found, and requeues it only after the transaction has expired, so nothing is paid twice.
+  - If Horizon rejects some operations, only the affected withdrawals are refunded to their users; the rest retry.
+- **Caps.** There are separate caps for the total held, per user and per send. In `mainnet-test` these are hard-limited to A$300 or less, and a higher config is refused.
+  - Deposits that would break a cap go to suspense, from where they can be refunded.
+  - On mainnet-test the shared account's trustline limit is also 300, so the network itself refuses more.
+- **Tests.**
+  - `test/ledger.test.ts`: 11 tests against a fake Horizon that enforces sequence numbers and trustlines.
+  - `lib/ledger.e2e.test.ts`, run with `./sponsor-worker/run-ledger-e2e.sh`, against live testnet.
+  - `scripts/mainnet-dryrun.mjs`: read-only mainnet checks.
+  - `scripts/mainnet-shared-account.mjs`: setup and close for the shared account. It's a dry run by default.
+
+### Real cost per user (12 Nov 2026: XLM A$0.214, base reserve 0.5 XLM, base fee 100 stroops)
+- **Shared account:** 1.5 XLM locked once (account plus 1 AUDD trustline), about A$0.32 in total. Per user that's nothing, however many users there are.
+- **Internal payments:** free. **Deposits:** the sender pays.
+- **Outside withdrawals:** 100 stroops (0.00001 XLM) per destination, batched up to 100 per transaction. At 1M users each withdrawing once a month, that's about 10 XLM (about A$2) a month at base fee. At today's p99 surge fee (25,274 stroops) it would be about A$540 a month.
+- **For comparison:** per-user accounts at 1M users lock 1.5M XLM, about A$320,000.
+- **Trade-off:** this design is custodial. Pocket Wallet holds users' AUDD in one account and runs the ledger, which needs legal advice before real customers use it.
+
+
+
+## Per-user self-custody sponsor (optional, testnet only)
 
 **Not deployed. Testnet only.** Hosting it, and anything to do with mainnet, needs Ric's decision (Linear RIC-658).
 

@@ -120,3 +120,13 @@ describe("transaction builders (testnet only)", () => {
     expect(() => buildSponsoredOnboardingTx(new Account(sponsor, "1"), a, audd, Networks.PUBLIC)).toThrow(/testnet/);
   });
 });
+
+import { stellarBuild, stellarCustody } from "./stellar";
+describe("AUDD build modes", () => {
+  it("only testnet and mainnet-test turn the feature on; shared is the default; self only on testnet", () => {
+    expect([undefined, "", "mainnet", "TESTNET", "testnet", "mainnet-test"].map((f) => stellarBuild(f))).toEqual(["off", "off", "off", "off", "testnet", "mainnet-test"]);
+    expect(stellarCustody("testnet", undefined)).toBe("shared");
+    expect(stellarCustody("testnet", "self")).toBe("self");
+    expect(stellarCustody("mainnet-test", "self")).toBe("shared");
+  });
+});

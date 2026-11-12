@@ -50,7 +50,7 @@ describe("identity isolation", () => {
       expect(src, f).not.toMatch(/bluehat|localStorage\.clear\(|indexedDB\.deleteDatabase/i);
     }
     // Stellar modules do not use browser storage at all.
-    for (const f of ["lib/stellar.ts", "lib/stellar-network.ts"]) {
+    for (const f of ["lib/stellar.ts", "lib/stellar-network.ts", "lib/sponsor-client.ts", "lib/ledger-client.ts", "components/AuddPanel.tsx", "components/SharedAuddPanel.tsx"]) {
       expect(readFileSync(f, "utf8"), f).not.toMatch(/localStorage|sessionStorage|indexedDB/);
     }
   });

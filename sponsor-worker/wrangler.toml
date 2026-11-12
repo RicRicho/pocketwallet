@@ -25,6 +25,10 @@ MAX_FEE_STROOPS = "20000"
 # Channel accounts (derived from the sponsor secret) remove sequence-number collisions.
 CHANNELS = "5"
 CHANNEL_STARTING_XLM = "3"
+# Shared-account ledger: pick up deposits and settle outside withdrawals every minute.
+[triggers]
+crons = ["* * * * *"]
+
 # One global Durable Object holds rate limits, the daily cap, channel leases
 # and serializes sponsor-sequence submissions across all Worker instances.
 [[durable_objects.bindings]]

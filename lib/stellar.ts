@@ -34,6 +34,24 @@ export function stellarFeatureEnabled(
   return flag === "testnet";
 }
 
+/**
+ * Build modes for the AUDD feature:
+ *  - "testnet": test money on Stellar testnet (shared account by default, or
+ *    per-user self-custody with NEXT_PUBLIC_STELLAR_MODE=self).
+ *  - "mainnet-test": Ric's capped LIVE test. Shared account only, official
+ *    AUDD issuer only, hard cap A$300 (enforced by the service).
+ * Anything else means off.
+ */
+export type StellarBuild = "off" | "testnet" | "mainnet-test";
+export function stellarBuild(flag: string | undefined = process.env.NEXT_PUBLIC_POCKETWALLET_STELLAR): StellarBuild {
+  return flag === "testnet" || flag === "mainnet-test" ? flag : "off";
+}
+/** Shared (omnibus, no per-user Stellar account) is the default. Self-custody is testnet-only, opt-in. */
+export function stellarCustody(build: StellarBuild = stellarBuild(), mode: string | undefined = process.env.NEXT_PUBLIC_STELLAR_MODE): "shared" | "self" {
+  return build === "testnet" && mode === "self" ? "self" : "shared";
+}
+export const MAINNET_TEST_CAP_AUD = 300;
+
 /** Official AUDD issuers, from AUDD's devhub "Supported Blockchains" table and
  * https://audd.digital/.well-known/stellar.toml (checked 12 Nov 2026). */
 export const AUDD_TESTNET_ISSUER = "GBAQ7FQE2AIXWTX4TCMXEMB3EZSBF565LK5NBKNBTAMLNLX3BHUTFRAI";

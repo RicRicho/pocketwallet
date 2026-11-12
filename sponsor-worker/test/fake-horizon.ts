@@ -42,4 +42,5 @@ export class MemoryStorage {
   async get<T>(k: string) { return this.data.get(k) as T | undefined; }
   async put<T>(k: string, v: T) { this.data.set(k, structuredClone(v)); }
   async delete(k: string) { return this.data.delete(k); }
+  async list<T>(o: { prefix: string }) { return new Map([...this.data.entries()].filter(([k]) => k.startsWith(o.prefix)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, structuredClone(v) as T])); }
 }

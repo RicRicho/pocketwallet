@@ -8,6 +8,7 @@
  */
 import { Account } from "@stellar/stellar-base";
 import { horizonAccount, horizonSubmit } from "./horizon";
+import { Ledger, checkRecipient, loadLedgerConfig, type LedgerEnv } from "./ledger";
 import {
   ONBOARD_TTL_SECONDS, PolicyError, buildCreateChannel, buildOnboarding, deriveChannel, loadConfig,
   requireAccountId, type Config, type Env,
@@ -17,6 +18,7 @@ export interface DOStorage {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<boolean>;
+  list<T = unknown>(opts: { prefix: string }): Promise<Map<string, T>>;
 }
 export interface DOState { storage: DOStorage }
 
@@ -26,11 +28,44 @@ type Lease = { until: number; account: string };
 export type CoordinatorRequest =
   | { op: "hit"; key: string; limit: number; windowMs: number; now: number }
   | { op: "onboard"; account: string; ip: string; now: number }
-  | { op: "release"; account: string; now: number };
+  | { op: "release"; account: string; now: number }
+  | { op: "ledger"; action: "register" | "balance" | "send" | "status" | "sync" | "settle" | "reserves" | "suspense" | "refund"; body: Record<string, unknown>; ip: string; now: number };
 
 export class SponsorCoordinator {
   private sponsorChain: Promise<unknown> = Promise.resolve();
-  constructor(private state: DOState, private env: Env) {}
+  private ledgerChain: Promise<unknown> = Promise.resolve();
+  constructor(private state: DOState, private env: Env & LedgerEnv) {}
+
+  /** Serialize every ledger mutation (balances, withdrawals, shared-account sequence). */
+  private withLedgerLock = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = this.ledgerChain.then(fn, fn);
+    this.ledgerChain = run.catch(() => undefined);
+    return run;
+  };
+
+  async ledger(action: string, body: Record<string, unknown>, ip: string, now: number): Promise<unknown> {
+    const cfg = loadLedgerConfig(this.env);
+    const l = new Ledger(this.state.storage, cfg, this.withLedgerLock);
+    const MIN = 60_000;
+    switch (action) {
+      case "register":
+        if (!(await this.hit(`ledger-reg-ip:${ip}`, Number(this.env.MAX_ONBOARD_PER_IP_PER_HOUR || 5), 3_600_000, now))) throw new PolicyError(429, "rate_limited", "Too many sign-ups from here. Try later.");
+        return l.register(body, now);
+      case "balance": return l.balance(body, now);
+      case "status": return l.withdrawalStatus(body, now);
+      case "send":
+        if (!(await this.hit(`ledger-send:${String(body.account)}`, Number(this.env.MAX_SENDS_PER_USER_PER_MINUTE || 30), MIN, now))) throw new PolicyError(429, "rate_limited", "Too many sends. Slow down.");
+        return l.send(body, now, (base) => checkRecipient(cfg, base));
+      case "sync":
+        if (!(await this.hit(`ledger-sync-ip:${ip}`, 20, MIN, now))) throw new PolicyError(429, "rate_limited", "Too many refreshes");
+        return l.sync();
+      case "reserves": return l.reserves();
+      case "settle": return l.settle(now);
+      case "suspense": return l.listSuspense();
+      case "refund": return l.refundSuspense(String(body.key), now);
+      default: throw new PolicyError(400, "bad_op", "Unknown ledger action");
+    }
+  }
 
   /** Serialize anything that consumes the sponsor account's own sequence number. */
   private withSponsorLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -113,6 +148,7 @@ export class SponsorCoordinator {
       if (body.op === "hit") result = { ok: await this.hit(body.key, body.limit, body.windowMs, body.now) };
       else if (body.op === "onboard") result = await this.onboard(body.account, body.ip, body.now);
       else if (body.op === "release") result = await this.release(body.account, body.now);
+      else if (body.op === "ledger") result = await this.ledger(body.action, body.body, body.ip, body.now);
       else throw new PolicyError(400, "bad_op", "Unknown operation");
       return Response.json(result);
     } catch (e) {

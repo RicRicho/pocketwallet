@@ -4,6 +4,7 @@
  * by the same build-time config the app uses. With the feature flag off the
  * CSP is left exactly as in public/_headers.
  *   NEXT_PUBLIC_POCKETWALLET_STELLAR=testnet  -> Horizon testnet + Friendbot
+ *   NEXT_PUBLIC_POCKETWALLET_STELLAR=mainnet-test -> only the service origin below
  *   NEXT_PUBLIC_STELLAR_SPONSOR_URL=https://… -> that origin (https, or http://localhost / 127.0.0.1 only)
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,8 +14,10 @@ export const STELLAR_TESTNET_HOSTS = ["https://horizon-testnet.stellar.org", "ht
 
 /** @param {Record<string, string | undefined>} env @returns {string[]} */
 export function stellarConnectSources(env) {
-  if (env.NEXT_PUBLIC_POCKETWALLET_STELLAR !== "testnet") return [];
-  const out = [...STELLAR_TESTNET_HOSTS];
+  const build = env.NEXT_PUBLIC_POCKETWALLET_STELLAR;
+  if (build !== "testnet" && build !== "mainnet-test") return [];
+  // mainnet-test (shared account only) talks to the Pocket Wallet service, never to Horizon directly.
+  const out = build === "testnet" ? [...STELLAR_TESTNET_HOSTS] : [];
   const raw = (env.NEXT_PUBLIC_STELLAR_SPONSOR_URL || "").trim();
   if (raw) {
     let u;

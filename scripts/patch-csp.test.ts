@@ -20,6 +20,11 @@ describe("config-driven CSP", () => {
     expect(patchHeaders(on, { NEXT_PUBLIC_POCKETWALLET_STELLAR: "testnet", NEXT_PUBLIC_STELLAR_SPONSOR_URL: "https://sponsor.example.workers.dev" })).toBe(on);
     expect(stellarConnectSources({ NEXT_PUBLIC_POCKETWALLET_STELLAR: "testnet", NEXT_PUBLIC_STELLAR_SPONSOR_URL: "http://127.0.0.1:8787" })).toContain("http://127.0.0.1:8787");
   });
+  it("mainnet-test adds only the service origin (no Horizon, no Friendbot)", () => {
+    const c = connect(patchHeaders(headers, { NEXT_PUBLIC_POCKETWALLET_STELLAR: "mainnet-test", NEXT_PUBLIC_STELLAR_SPONSOR_URL: "https://pw-audd.example" }));
+    expect(c).toContain("https://pw-audd.example");
+    expect(c.join(" ")).not.toMatch(/stellar\.org/);
+  });
   it("refuses insecure or malformed sponsor URLs", () => {
     expect(() => stellarConnectSources({ NEXT_PUBLIC_POCKETWALLET_STELLAR: "testnet", NEXT_PUBLIC_STELLAR_SPONSOR_URL: "http://sponsor.example" })).toThrow(/https/);
     expect(() => stellarConnectSources({ NEXT_PUBLIC_POCKETWALLET_STELLAR: "testnet", NEXT_PUBLIC_STELLAR_SPONSOR_URL: "not a url" })).toThrow(/not a URL/);

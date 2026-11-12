@@ -105,6 +105,8 @@ public/         icon.svg, _headers (CSP/HSTS for Cloudflare Pages)
 
 ## AUDD on Stellar — testnet preview (feature-flagged, off by default)
 
+**Default design: one shared Stellar account.** Users get muxed M… sub-addresses and need no Stellar account or XLM reserve. A ledger in the service tracks balances. Pocket Wallet to Pocket Wallet payments are free and off-chain, and outside withdrawals settle in batches. See `sponsor-worker/README.md` for the design and costs, and `docs/AUDD_MAINNET_TEST_RUNBOOK.md` for Ric's capped live test (`NEXT_PUBLIC_POCKETWALLET_STELLAR=mainnet-test`). The per-user self-custody path below stays available on testnet with `NEXT_PUBLIC_STELLAR_MODE=self`.
+
 Branch `feature/audd-stellar-testnet`. Build plan: [team wiki](https://wiki.ricricho.com/team/index.php?title=Wallet_Nation/Pocket_Wallet_AUDD_Stellar_build_plan).
 
 - Enable with `NEXT_PUBLIC_POCKETWALLET_STELLAR=testnet` at build time. Any other value (or unset) = off; production builds are unchanged.

@@ -20,10 +20,13 @@ import {
 const PASSCODE_LEN = 6;
 type Screen = "home" | "receive" | "send" | "audd";
 
-// AUDD on Stellar (testnet preview). Off unless NEXT_PUBLIC_POCKETWALLET_STELLAR=testnet.
 // Inlined at build time; the panel and Stellar SDK load lazily only when enabled.
-const STELLAR_ENABLED = process.env.NEXT_PUBLIC_POCKETWALLET_STELLAR === "testnet";
-const AuddPanel = dynamic(() => import("@/components/AuddPanel"), { ssr: false });
+// AUDD on Stellar: "testnet" or Ric's capped "mainnet-test". Shared account is the default;
+// per-user self-custody only with NEXT_PUBLIC_STELLAR_MODE=self on testnet.
+const STELLAR_BUILD = process.env.NEXT_PUBLIC_POCKETWALLET_STELLAR;
+const STELLAR_ENABLED = STELLAR_BUILD === "testnet" || STELLAR_BUILD === "mainnet-test";
+const STELLAR_SELF = STELLAR_BUILD === "testnet" && process.env.NEXT_PUBLIC_STELLAR_MODE === "self";
+const AuddPanel = dynamic(() => (STELLAR_SELF ? import("@/components/AuddPanel") : import("@/components/SharedAuddPanel")), { ssr: false });
 
 export default function WalletPage() {
   const [meta, setMeta] = useState<WalletMeta | null>(null);
@@ -179,7 +182,7 @@ function Dashboard({ wallet, meta, snapshot, networkError, onReceive, onSend, on
         <PrimaryButton onClick={onReceive}>Receive</PrimaryButton>
         <PrimaryButton onClick={onSend}>Send</PrimaryButton>
       </div>
-      {onAudd && <div className="mt-3"><GhostButton onClick={onAudd}>A$ AUDD on Stellar (testnet preview)</GhostButton></div>}
+      {onAudd && <div className="mt-3"><GhostButton onClick={onAudd}>{STELLAR_BUILD === "mainnet-test" ? "A$ AUDD (LIVE test, capped)" : "A$ AUDD on Stellar (testnet preview)"}</GhostButton></div>}
       {networkError && <button onClick={onRefresh} className="mt-4 w-full text-center text-[13px] text-red-500">{networkError} Tap to retry.</button>}
       <p className="mt-5 text-center text-[13px] text-haze">Bitcoin {wallet.network === "mainnet" ? "mainnet" : "testnet"}</p>
       <div className="mt-6"><GhostButton onClick={() => {
