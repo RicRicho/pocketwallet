@@ -25,3 +25,7 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 *.tsbuildinfo
+
+# Cloudflare Worker local secrets — never commit
+.dev.vars
+.wrangler/
